@@ -1,0 +1,19 @@
+<args format="1.0">
+    <shaderType>
+        <tag value="bxdf"/>
+    </shaderType>
+    <param name="DiffuseColor" type="color" default="1.0 0.0 0.0"
+           widget="color">
+        <tags>
+           <tag value="color"/>
+        </tags>
+        <help>
+            Diffuse color. Also referred to as albedo.
+        </help>
+    </param>
+    <rfmdata nodeid="1053521"
+     classification="shader/surface:rendernode/RenderMan/bxdf:swatch/rmanSwatch"/>
+</args>
+
+
+
