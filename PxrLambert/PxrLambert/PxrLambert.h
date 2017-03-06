@@ -55,13 +55,13 @@ class PxrLambert : public RixBsdf
 		PRMAN_INLINE
 		void generate(RtFloat NdL, const RtColorRGB &DiffuseColor, RtColorRGB  &W)
 		{
-			W = DiffuseColor * NdL;
+			W = DiffuseColor * NdL / F_PI;
 		}
 
 		PRMAN_INLINE
 		void evaluate(RtFloat NdL, const RtColorRGB &DiffuseColor, RtColorRGB  &W)
 		{
-			W = DiffuseColor * NdL;
+			W = DiffuseColor * NdL / F_PI;
 		}
 
 	private:

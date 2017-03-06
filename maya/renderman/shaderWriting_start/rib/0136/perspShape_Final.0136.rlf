@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<RenderManLookFile Version="1" Format="RenderMan Look Data" AssemblyName="perspShape_Final">
+    <InjectablePayloads>
+        <Payload Id="initialShadingGroup" Label="" Source="1" Content="1"><![CDATA[##RenderMan RIB
+version 3.04
+Displacement "null" 
+]]></Payload>
+    </InjectablePayloads>
+    <TightBindings>
+        <Binding Key="curtain/curtainShape" PayloadId="initialShadingGroup"/>
+    </TightBindings>
+</RenderManLookFile>

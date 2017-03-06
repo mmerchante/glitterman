@@ -1,19 +1,25 @@
 ﻿  PxrLambert.cpp
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1233): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1234): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1236): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1237): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1239): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1240): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1242): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1243): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1246): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1247): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1249): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1250): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1252): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1253): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1255): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-c:\program files\pixar\rendermanproserver-21.3\include\ritypeshelper.h(1256): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
-  PxrLambert.vcxproj -> c:\users\jin kim\documents\visual studio 2015\Projects\PxrLambert\x64\Debug\PxrLambert.dll
-  PxrLambert.vcxproj -> c:\users\jin kim\documents\visual studio 2015\Projects\PxrLambert\x64\Debug\PxrLambert.pdb (Full PDB)
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1233): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1234): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1236): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1237): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1239): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1240): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1242): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1243): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1246): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1247): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1249): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1250): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1252): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1253): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1255): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+c:\program files\pixar\rendermanproserver-21.2\include\ritypeshelper.h(1256): warning C4244: '=': conversion from 'double' to 'float', possible loss of data
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(76): warning C4305: '=': truncation from 'double' to 'RtFloat'
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(77): warning C4305: '=': truncation from 'double' to 'RtFloat'
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(124): warning C4305: '=': truncation from 'double' to 'RtFloat'
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(125): warning C4305: '=': truncation from 'double' to 'RtFloat'
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(176): warning C4305: '=': truncation from 'double' to 'RtFloat'
+d:\penn\cis660\authoringtool\glitterman\pxrlambert\pxrlambert\pxrlambert.cpp(177): warning C4305: '=': truncation from 'double' to 'RtFloat'
+  PxrLambert.vcxproj -> D:\Penn\cis660\AuthoringTool\glitterman\PxrLambert\x64\Debug\PxrLambert.dll
+  PxrLambert.vcxproj -> D:\Penn\cis660\AuthoringTool\glitterman\PxrLambert\x64\Debug\PxrLambert.pdb (Full PDB)
