@@ -150,9 +150,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CookTorrance.cpp" />
+    <ClCompile Include="MicrofacetBsdf.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="CookTorrance.args" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="MicrofacetBsdf.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
