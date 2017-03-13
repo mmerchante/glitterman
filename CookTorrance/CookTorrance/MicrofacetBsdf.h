@@ -11,7 +11,7 @@ class MicrofacetBsdf : public RixBsdf
 {
 public:
 	MicrofacetBsdf(RixShadingContext const *sc, RixBxdfFactory *bx, RixBXLobeTraits const &lobesWanted,
-		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *SpecularHardness);
+		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *SpecularHardness, RtFloat const * IOR);
 
 	virtual RixBXEvaluateDomain GetEvaluateDomain();
 
@@ -34,14 +34,18 @@ private:
 
 	PRMAN_INLINE
 	void EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNormal3 &normal, const RtColorRGB &diffuseColor,
-			const RtColorRGB &specularColor, const RtFloat &roughness, const RtVector3 &Wi, const RtVector3 &Wo,
+			const RtColorRGB &specularColor, const RtFloat &roughness, const RtFloat & ior, const RtVector3 &Wi, const RtVector3 &Wo,
 			RtColorRGB  &outRadiance, RtFloat &FPdf, RtFloat &RPdf);
 
 private:
 	RixBXLobeTraits m_lobesWanted;
+	
 	RtColorRGB const * m_DiffuseColor;
 	RtColorRGB const * m_SpecularColor;
-	RtFloat const * m_SpecularHardness;
+	
+	RtFloat const * m_Roughness;
+	RtFloat const * m_IOR;
+
 	RtPoint3 const * m_P;
 	RtVector3 const * m_Vn;
 	RtVector3 const * m_Tn;
@@ -85,9 +89,6 @@ private:
 	RtColorRGB m_DiffuseColorDflt;
 	RtColorRGB m_SpecualrColorDflt;
 
-	//----------------------------------------------------------------------------------------------------------------------
-	/// @brief Defualt exponent of our blinn BRDF
-	//----------------------------------------------------------------------------------------------------------------------
-	RtFloat m_SpecularHardnessDflt;
-	//----------------------------------------------------------------------------------------------------------------------
+	RtFloat m_RoughnessDefault;
+	RtFloat m_IORDefault;
 };

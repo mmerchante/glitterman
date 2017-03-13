@@ -1,16 +1,19 @@
 <args format="1.0">
-    <shaderType>
-        <tag value="bxdf"/>
-    </shaderType>
-    <param name="DiffuseColor" type="color" default="0.5 0.5 0.5"
-           widget="color">
-        <tags>
-           <tag value="color"/>
-        </tags>
-        <help>
-            Diffuse color. Also referred to as albedo.
-        </help>
-    </param>
+  
+  <shaderType>
+      <tag value="bxdf"/>
+  </shaderType>
+  
+  <param name="DiffuseColor" type="color" default="0.5 0.5 0.5"
+          widget="color">
+      <tags>
+          <tag value="color"/>
+      </tags>
+      <help>
+          Diffuse color. Also referred to as albedo.
+      </help>
+  </param>
+  
   <param name="SpecularColor" type="color" default="1.0 1.0 1.0"
            widget="color">
     <tags>
@@ -20,15 +23,26 @@
       Specualr color. Also referred to as albedo.
     </help>
   </param>
-    <param name="SpecularHardness" type="float" default="50.">
-        <tags>
-           <tag value="float"/>
-        </tags>
-        <help>
-            Exponent of our blinn BRDF. Increase in exponent means increase in specular
-        </help>
-    </param>
-    <rfmdata nodeid="1053520"
+  
+  <param name="Roughness" type="float" default="0.2" max="1.0" min="0.0">
+      <tags>
+          <tag value="float"/>
+      </tags>
+      <help>
+          Roughness for the Microfacet mdoel.
+      </help>
+  </param>
+
+  <param name="IOR" type="float" default="1.5" max="5.0" min="1.0">
+    <tags>
+      <tag value="float"/>
+    </tags>
+    <help>
+      Index of refraction of the material.
+    </help>
+  </param>
+  
+  <rfmdata nodeid="1053520"
      classification="shader/surface:rendernode/RenderMan/bxdf:swatch/rmanSwatch"/>
 </args>
 
