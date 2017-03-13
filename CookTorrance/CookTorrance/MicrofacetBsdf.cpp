@@ -24,6 +24,7 @@ MicrofacetBsdf::MicrofacetBsdf(RixShadingContext const * sc, RixBxdfFactory * bx
 	sc->GetBuiltinVar(RixShadingContext::k_Ngn, &m_Ngn);
 	sc->GetBuiltinVar(RixShadingContext::k_Tn, &m_Tn);
 	sc->GetBuiltinVar(RixShadingContext::k_Vn, &m_Vn);
+	// TODO: get outside IOR
 }
 
 RixBXEvaluateDomain MicrofacetBsdf::GetEvaluateDomain()
@@ -36,7 +37,8 @@ void MicrofacetBsdf::GetAggregateLobeTraits(RixBXLobeTraits * traits)
 	*traits = m_lobesWanted;
 }
 
-void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLobeTraits const * lobesWanted, RixRNG * rng, RixBXLobeSampled * lobeSampled, RtVector3 * Ln, RixBXLobeWeights & W, RtFloat * FPdf, RtFloat * RPdf, RtColorRGB * compTrans)
+void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLobeTraits const * lobesWanted, RixRNG * rng, 
+	RixBXLobeSampled * lobeSampled, RtVector3 * Ln, RixBXLobeWeights & W, RtFloat * FPdf, RtFloat * RPdf, RtColorRGB * compTrans)
 {
 	RtInt nPts = shadingCtx->numPts;
 	RixBXLobeTraits all = GetAllLobeTraits();
@@ -61,15 +63,15 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 		if (doDiff)
 		{
-			facingNormal = -RixGetBackwardFacingNormal(m_Vn[i], m_Nn[i], &NdV);
-			NdV *= -1.f;
+			facingNormal = RixGetForwardFacingNormal(m_Vn[i], m_Nn[i], &NdV);
 
 			if (NdV > k_minfacing)
 			{
 				RtFloat cosTheta = 0.f;
-				RixCosDirectionalDistribution(xi[i], facingNormal, Ln[i], cosTheta);
+				//RixCosDirectionalDistribution(xi[i], facingNormal, Ln[i], cosTheta);
+				RixUniformDirectionalDistribution(xi[i], facingNormal, Ln[i], cosTheta);
 
-				RtFloat NdL = facingNormal.Dot(Ln[i]);
+				RtFloat NdL = cosTheta;// facingNormal.Dot(Ln[i]);
 
 				if (NdL > 0.f)
 				{
@@ -105,8 +107,7 @@ void MicrofacetBsdf::EvaluateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 		if (doDiff)
 		{
-			facingNormal = -RixGetBackwardFacingNormal(m_Vn[i], m_Nn[i], &NdV);
-			NdV *= -1.f;
+			facingNormal = RixGetForwardFacingNormal(m_Vn[i], m_Nn[i], &NdV);
 
 			if (NdV > k_minfacing)
 			{
@@ -124,7 +125,8 @@ void MicrofacetBsdf::EvaluateSample(RixBXTransportTrait transportTrait, RixBXLob
 	}
 }
 
-void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, RixBXLobeTraits const & lobesWanted, RixRNG * rng, RtInt index, RtInt nsamps, RixBXLobeTraits * lobesEvaluated, RtVector3 const * Ln, RixBXLobeWeights & W, RtFloat * FPdf, RtFloat * RPdf)
+void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, RixBXLobeTraits const & lobesWanted, RixRNG * rng, 
+	RtInt index, RtInt nsamps, RixBXLobeTraits * lobesEvaluated, RtVector3 const * Ln, RixBXLobeWeights & W, RtFloat * FPdf, RtFloat * RPdf)
 {
 	for (int i = 0; i < nsamps; i++)
 		lobesEvaluated[i].SetNone();
@@ -151,9 +153,8 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 
 	RtNormal3 Nf;
 	RtFloat NdV;
-	Nf = -RixGetBackwardFacingNormal(Vn, Nn, &NdV);
-	NdV *= -1.f;
-
+	Nf = RixGetForwardFacingNormal(Vn, Nn, &NdV);
+	
 	if (NdV > k_minfacing)
 	{
 		for (int i = 0; i < nsamps; ++i)
@@ -207,10 +208,10 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNo
 {
 	RtVector3 halfVector = (Wi + Wo);
 	halfVector.Normalize();
-	float halfVectorCosTheta = fabs(halfVector.Dot(normal));
+	float halfVectorCosTheta = (halfVector.Dot(normal));
 
 	// Evaluate our normal distribution function
-	float D = EvaluateDistribution(halfVectorCosTheta, .35f);
+	float D = EvaluateDistribution(halfVectorCosTheta, roughness);
 
 	float F = 0.f;
 	RixFresnelDielectric(NdV, 1.f / ior, &F);
@@ -253,8 +254,8 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNo
 		}
 	}
 
-	float radiance = F;// (G1 * G2 * D * F) / (4.f * IdN);
-	outRadiance = specularColor * radiance;// +diffuseColor * NdL / M_PI;
+	float radiance = (G1 * G2 * D * F * NdL) / (4.f * IdN * OdN);
+	outRadiance = specularColor * radiance + (diffuseColor * NdL / M_PI);
 	FPdf = D * G1 / IdN;
 	RPdf = D * G2 / OdN;
 }

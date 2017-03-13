@@ -24,7 +24,7 @@
     </help>
   </param>
   
-  <param name="Roughness" type="float" default="0.2" max="1.0" min="0.0">
+  <param name="Roughness" type="float" default="0.2" max="1.0" min="0.001">
       <tags>
           <tag value="float"/>
       </tags>
