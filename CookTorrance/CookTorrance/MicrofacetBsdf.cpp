@@ -22,13 +22,14 @@ RtFloat RoughnessToAlpha(RtFloat roughness)
 }
 
 MicrofacetBsdf::MicrofacetBsdf(RixShadingContext const * sc, RixBxdfFactory * bx, RixBXLobeTraits const & lobesWanted,
-	RtColorRGB const * DiffuseColor, RtColorRGB const * SpecularColor, RtFloat const * Roughness,
+	RtColorRGB const * DiffuseColor, RtColorRGB const * SpecularColor, RtFloat const * Roughness, RtInt const * distributionUsed,
 	RtColorRGB const * indexOfRefraction, RtColorRGB const * absorptionCoefficient) :
 	RixBsdf(sc, bx),
 	m_lobesWanted(lobesWanted),
 	diffuseColor(DiffuseColor),
 	specularColor(SpecularColor),
 	microfacetRoughness(Roughness),
+	distributionUsed(distributionUsed),
 	indexOfRefraction(indexOfRefraction),
 	extinctionCoefficient(absorptionCoefficient)
 {
@@ -55,6 +56,18 @@ void MicrofacetBsdf::GetAggregateLobeTraits(RixBXLobeTraits * traits)
 }
 
 // Samples in tangent space
+RtVector3 MicrofacetBsdf::SampleGGXDistribution(const RtFloat2 & xi, const RtFloat alpha)
+{
+	RtFloat phi = xi.y * F_TWOPI;
+	
+	RtFloat tanTheta2 = alpha * alpha * xi.x / (1.0f - xi.x);
+	RtFloat cosTheta = 1.f / std::sqrt(std::max(0.0001f, 1.f + tanTheta2));
+
+	RtFloat sinTheta = std::sqrt(std::max(0.f, 1.f - cosTheta * cosTheta));
+	return RixSphericalDirection(sinTheta, cosTheta, phi);
+}
+
+// Samples in tangent space
 RtVector3 MicrofacetBsdf::SampleBeckmannDistribution(const RtFloat2& xi, const RtFloat alpha)
 {
 	RtFloat logSample = std::log(xi.x);
@@ -71,11 +84,12 @@ RtVector3 MicrofacetBsdf::SampleBeckmannDistribution(const RtFloat2& xi, const R
 	return RixSphericalDirection(sinTheta, cosTheta, phi);
 }
 
-RtVector3 MicrofacetBsdf::SampleDistribution(const RtFloat2 & xi, const RtFloat3 & normal, const RtFloat3 & tangent, const RtVector3& Wo, const RtFloat alpha)
+RtVector3 MicrofacetBsdf::SampleDistribution(const RtFloat2 & xi, const RtFloat3 & normal, const RtFloat3 & tangent, 
+											 const RtVector3& Wo, const RtFloat alpha, const RtInt distribution)
 {
 	RtFloat3 TY = Cross(normal, tangent);
 
-	RtNormal3 localWh = SampleBeckmannDistribution(xi, alpha);
+	RtNormal3 localWh = distribution == 0 ? SampleBeckmannDistribution(xi, alpha) : SampleGGXDistribution(xi, alpha);
 	RtVector3 Wh = RixChangeBasisFrom(localWh, tangent, TY, normal);
 
 	if (Dot(Wh, Wo) < 0.f) 
@@ -87,14 +101,18 @@ RtVector3 MicrofacetBsdf::SampleDistribution(const RtFloat2 & xi, const RtFloat3
 	return Wi;
 }
 
-RtFloat MicrofacetBsdf::EvaluateMaskingShadow(const RtVector3 & Wi, const RtVector3 & Wo, const RtNormal3& normal, const RtNormal3& tangent, const RtFloat alpha)
+RtFloat MicrofacetBsdf::EvaluateMaskingShadow(const RtVector3 & Wi, const RtVector3 & Wo, const RtNormal3& normal, 
+											   const RtNormal3& tangent, const RtFloat alpha, const RtInt& distribution)
 {
 	// TODO: Rethink lambdas so we dont need tangent space vectors
 	RtFloat3 TY = Cross(normal, tangent);
 	RtVector3 localWi = RixChangeBasisTo(Wi, tangent, TY, normal);
 	RtVector3 localWo = RixChangeBasisTo(Wo, tangent, TY, normal);
 
-	return 1.f / (1.f + BeckmannLambda(localWi, alpha) + BeckmannLambda(localWo, alpha));
+	if(distribution == 0)
+		return 1.f / (1.f + BeckmannLambda(localWi, alpha) + BeckmannLambda(localWo, alpha));
+	else
+		return 1.f / (1.f + GGXLambda(localWi, alpha) + GGXLambda(localWo, alpha));
 }
 
 RtFloat MicrofacetBsdf::BeckmannLambda(const RtVector3 & w, const RtFloat alpha)
@@ -111,6 +129,20 @@ RtFloat MicrofacetBsdf::BeckmannLambda(const RtVector3 & w, const RtFloat alpha)
 		return 0.f;
 
 	return (1.f - 1.259f * a + 0.396f * a * a) / (3.535f * a + 2.181f * a * a);
+}
+
+RtFloat MicrofacetBsdf::GGXLambda(const RtVector3 & w, const RtFloat alpha)
+{
+	RtFloat absTanTheta = std::abs(TanTheta(w));
+
+	if (std::isinf(absTanTheta))
+		return 0.f;
+
+	// Isotropic
+	RtFloat alpha2Tan2Theta = alpha * absTanTheta;
+	alpha2Tan2Theta *= alpha2Tan2Theta;
+
+	return (-1.f + std::sqrt(std::max(0.0001f, 1.f + alpha2Tan2Theta))) * .5f;
 }
 
 void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLobeTraits const * lobesWanted, RixRNG * rng, 
@@ -151,7 +183,7 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 				// TODO: Translate this to lobes...
 				if(lobeR[i] > .5f || diffuseColor[i].IsBlack())
-					Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha);
+					Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha, distributionUsed[i]);
 				else
 					RixCosDirectionalDistribution(xi[i], m_Nn[i], Ln[i], cosTheta);
 
@@ -159,8 +191,8 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 				if (NdL > 0.f)
 				{
-					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], indexOfRefraction[i], extinctionCoefficient[i],
-						Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
+					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], distributionUsed[i],
+						indexOfRefraction[i], extinctionCoefficient[i], Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 
 					lobeSampled[i] = s_reflBlinnLobe;
 				}
@@ -199,8 +231,8 @@ void MicrofacetBsdf::EvaluateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 				if (NdL > 0.f)
 				{
-					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], indexOfRefraction[i], extinctionCoefficient[i],
-						Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
+					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], distributionUsed[i],
+						indexOfRefraction[i], extinctionCoefficient[i], Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 
 					lobesEvaluated[i] |= s_reflBlinnLobeTraits;
 				}
@@ -227,6 +259,7 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 	RtColorRGB const &diff = diffuseColor[index];
 	RtColorRGB const &spec = specularColor[index];
 	RtFloat const &roughness = microfacetRoughness[index];
+	RtInt const &distribution = distributionUsed[index];
 
 	RtColorRGB const &ior = indexOfRefraction[index];
 	RtColorRGB const &absorption = extinctionCoefficient[index];
@@ -248,7 +281,7 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 
 			if (NdL > 0.f)
 			{
-				EvaluateMicrofacetBRDF(Nf, m_Tn[i], diff, spec, roughness, ior, absorption, Ln[i], Vn, reflDiffuseWgt[i], FPdf[i], RPdf[i]);
+				EvaluateMicrofacetBRDF(Nf, m_Tn[i], diff, spec, roughness, distribution, ior, absorption, Ln[i], Vn, reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 				lobesEvaluated[i] |= s_reflBlinnLobeTraits;
 			}
 		}
@@ -269,19 +302,37 @@ RtFloat MicrofacetBsdf::EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness)
 	return std::exp(-tan2Theta / alpha2) / std::max(0.0001f, F_PI * alpha2 * cos4Theta);
 }
 
-RtFloat MicrofacetBsdf::EvaluateDistribution(RtFloat cosTheta, RtFloat roughness)
+RtFloat MicrofacetBsdf::EvaluateGGX(RtFloat cosTheta, RtFloat roughness)
+{
+	RtFloat cos2Theta = cosTheta * cosTheta;
+	RtFloat tan2Theta = std::max(0.f, 1.f - cos2Theta) / cos2Theta;
+
+	if (std::isinf(tan2Theta))
+		return 0.f;
+
+	RtFloat cos4Theta = cos2Theta * cos2Theta;
+	RtFloat alpha2 = RoughnessToAlpha(roughness);
+	alpha2 *= alpha2;
+
+	RtFloat e = 1.f + (tan2Theta / alpha2);
+	return F_INVPI / std::max(0.0001f, alpha2 * cos4Theta * e * e);
+}
+
+RtFloat MicrofacetBsdf::EvaluateDistribution(RtFloat cosTheta, RtFloat roughness, RtInt distribution)
 {
 	if (cosTheta > 0.f)
 	{
-		// TODO: Choose GGX or Beckmann
-		return EvaluateBeckmann(cosTheta, roughness);
+		if (distribution == 0)
+			return EvaluateBeckmann(cosTheta, roughness);
+		else
+			return EvaluateGGX(cosTheta, roughness);
 	}
 
 	return 0.f;
 }
 
 void MicrofacetBsdf::EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
-	const RtColorRGB & specularColor, const RtFloat & roughness, const RtColorRGB & ior, const RtColorRGB & extinction, const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance,
+	const RtColorRGB & specularColor, const RtFloat & roughness, const RtInt & distribution, const RtColorRGB & ior, const RtColorRGB & extinction, const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance,
 	RtFloat & FPdf, RtFloat & RPdf)
 {
 	RtFloat cosThetaO = AbsDot(normal, Wo);
@@ -299,24 +350,33 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNo
 	// Evaluate our normal distribution function
 	Wh.Normalize();
 	RtFloat WhCosTheta = Dot(Wh, normal);
-	RtFloat D = EvaluateDistribution(WhCosTheta, roughness);
+	RtFloat D = EvaluateDistribution(WhCosTheta, roughness, distribution);
 	
 	// Fresnel
 	RtColorRGB F = RtColorRGB(0.f);
-	RtColorRGB eta = RtColorRGB(1.f) / ior;
-	RtColorRGB kappa = ior / extinction; // TODO: Find the actual mapping to kappa
+	RtColorRGB eta = ior.IsBlack() ? ior : (RtColorRGB(1.f) / ior);
+	RtColorRGB kappa = extinction.IsBlack() ? extinction : (ior / extinction); // TODO: Find the actual mapping to kappa
 	RixFresnelConductor(Dot(Wh, Wi), eta, kappa, &F);
 
 	// Shadowing
-	RtFloat G = EvaluateMaskingShadow(Wi, Wo, normal, tangent, RoughnessToAlpha(roughness));
+	RtFloat G = EvaluateMaskingShadow(Wi, Wo, normal, tangent, RoughnessToAlpha(roughness), distribution);
 
 	// The reference material does not conserve specular + diffuse energy
-	RtFloat specularRadiance = D * G / (4.f * cosThetaO);
-	outRadiance = specularColor * F * specularRadiance + (diffuseColor * cosThetaI / M_PI);
+	RtColorRGB specularRadiance = specularColor * F * (D * G / (4.f * cosThetaO));
+	RtColorRGB diffuseRadiance = diffuseColor * RixClamp(cosThetaI, 0.f, 1.f) / M_PI;
+	outRadiance = specularRadiance + diffuseRadiance;
 
+	// PDFs for bekcmann and ggx are the same with this approach
 	RtFloat absCosThetaW = std::abs(WhCosTheta);
-	FPdf = ((D * absCosThetaW / (4.f * Dot(Wo, Wh))) + (F_INVPI)) * .5f;
-	RPdf = ((D * absCosThetaW / (4.f * Dot(Wi, Wh))) + (F_INVPI)) * .5f;
+	FPdf = D * absCosThetaW / (4.f * Dot(Wo, Wh));
+	RPdf = D * absCosThetaW / (4.f * Dot(Wi, Wh));
+
+	// TODO: separate this into proper lobes...
+	if (!diffuseRadiance.IsBlack())
+	{
+		FPdf = FPdf * .5f + F_INVTWOPI;
+		RPdf = RPdf * .5f + F_INVTWOPI;
+	}
 }
 
 extern "C" PRMANEXPORT RixBxdfFactory *CreateRixBxdfFactory(const char *hint)
@@ -337,6 +397,7 @@ MicrofacetBsdfFactory::MicrofacetBsdfFactory()
 	m_RoughnessDefault = .35f;
 	indexOfRefractionDefault = RtColorRGB(1.5f);
 	extinctionCoefficientDefault = RtColorRGB(0.f); // Dielectric by default
+	distributionUsedDefault = 0;
 }
 
 MicrofacetBsdfFactory::~MicrofacetBsdfFactory()
@@ -376,6 +437,7 @@ enum paramIds
 	k_DiffuseColor,
 	k_SpecularColor,
 	k_Roughness,
+	k_Distribution,
 	k_IndexOfRefraction,
 	k_ExtinctionCoefficient,
 	k_numParams
@@ -390,6 +452,7 @@ MicrofacetBsdfFactory::GetParamTable()
 		RixSCParamInfo("DiffuseColor", k_RixSCColor),
 		RixSCParamInfo("SpecularColor", k_RixSCColor),
 		RixSCParamInfo("Roughness", k_RixSCFloat),
+		RixSCParamInfo("Distribution", k_RixSCInteger),
 		RixSCParamInfo("IndexOfRefraction", k_RixSCColor),
 		RixSCParamInfo("ExtinctionCoefficient", k_RixSCColor),
 		RixSCParamInfo() // end of table
@@ -432,7 +495,10 @@ RixBsdf * MicrofacetBsdfFactory::BeginScatter(RixShadingContext const *sCtx,
 	// Get all input data
 	RtColorRGB const * diffuseColor;
 	RtColorRGB const * specularColor;
+
 	RtFloat const * roughness;
+
+	RtInt const * distribution;
 
 	RtColorRGB const * indexOfRefraction;
 	RtColorRGB const * extinctionCoefficient;
@@ -440,6 +506,7 @@ RixBsdf * MicrofacetBsdfFactory::BeginScatter(RixShadingContext const *sCtx,
 	sCtx->EvalParam(k_DiffuseColor, -1, &diffuseColor, &m_DiffuseColorDflt, true);
 	sCtx->EvalParam(k_SpecularColor, -1, &specularColor, &m_SpecularColorDefault, true);
 	sCtx->EvalParam(k_Roughness, -1, &roughness, &m_RoughnessDefault, true);
+	sCtx->EvalParam(k_Distribution, -1, &distribution, &distributionUsedDefault, true);
 	sCtx->EvalParam(k_IndexOfRefraction, -1, &indexOfRefraction, &indexOfRefractionDefault, true);
 	sCtx->EvalParam(k_ExtinctionCoefficient, -1, &extinctionCoefficient, &extinctionCoefficientDefault, true);
 
@@ -447,7 +514,7 @@ RixBsdf * MicrofacetBsdfFactory::BeginScatter(RixShadingContext const *sCtx,
 	void *mem = pool.AllocForBxdf<MicrofacetBsdf>(1);
 
 	// Must use placement new to set up the vtable properly
-	MicrofacetBsdf *eval = new (mem) MicrofacetBsdf(sCtx, this, lobesWanted, diffuseColor, specularColor, roughness, 
+	MicrofacetBsdf *eval = new (mem) MicrofacetBsdf(sCtx, this, lobesWanted, diffuseColor, specularColor, roughness, distribution,
 		indexOfRefraction, extinctionCoefficient);
 
 	return eval;

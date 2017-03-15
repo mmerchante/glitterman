@@ -33,6 +33,19 @@
       </help>
   </param>
 
+  <param name="Distribution" type="int" default="0" widget="mapper">
+    <tags>
+      <tag value="int"/>
+    </tags>
+    <hintdict name="options">
+      <string name="Beckmann" value="0"/>
+      <string name="GGX" value="1"/>
+    </hintdict>
+    <help>
+      Distribution used for the microfacet model.
+    </help>
+  </param>
+
   <param name="IndexOfRefraction" type="color" default="1.5 1.5 1.5"
           widget="color">
     <tags>

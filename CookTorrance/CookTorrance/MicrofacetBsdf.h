@@ -11,7 +11,7 @@ class MicrofacetBsdf : public RixBsdf
 {
 public:
 	MicrofacetBsdf(RixShadingContext const *sc, RixBxdfFactory *bx, RixBXLobeTraits const &lobesWanted,
-		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *SpecularHardness,
+		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *Roughness, RtInt const * distributionUsed,
 		RtColorRGB const * indexOfRefraction, RtColorRGB const * extinctionCoefficient);
 
 	virtual RixBXEvaluateDomain GetEvaluateDomain();
@@ -30,18 +30,23 @@ public:
 
 private:
 
+	RtVector3 SampleGGXDistribution(const RtFloat2& xi, const RtFloat alpha);
 	RtVector3 SampleBeckmannDistribution(const RtFloat2& xi, const RtFloat alpha);
-	RtVector3 SampleDistribution(const RtFloat2& xi, const RtFloat3& normal, const RtFloat3& tangent, const RtVector3& Wo, const RtFloat alpha);
+	RtVector3 SampleDistribution(const RtFloat2& xi, const RtFloat3& normal, const RtFloat3& tangent, 
+								 const RtVector3& Wo, const RtFloat alpha, const RtInt distribution);
 
-	RtFloat EvaluateMaskingShadow(const RtVector3& Wi, const RtVector3& Wo, const RtNormal3& normal, const RtNormal3& tangent, const RtFloat alpha);
+	RtFloat EvaluateMaskingShadow(const RtVector3& Wi, const RtVector3& Wo, const RtNormal3& normal, const RtNormal3& tangent, 
+								  const RtFloat alpha, const RtInt& distribution);
 	RtFloat BeckmannLambda(const RtVector3& W, const RtFloat alpha);
+	RtFloat GGXLambda(const RtVector3& W, const RtFloat alpha);
 
 	RtFloat EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness);
-	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness);
+	RtFloat EvaluateGGX(RtFloat cosTheta, RtFloat roughness);
+	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness, RtInt distribution);
 
 	PRMAN_INLINE
 	void EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
-		const RtColorRGB & specularColor, const RtFloat & roughness, const RtColorRGB & ior, const RtColorRGB & absorption, 
+		const RtColorRGB & specularColor, const RtFloat & roughness, const RtInt & distribution, const RtColorRGB & ior, const RtColorRGB & absorption,
 		const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance, RtFloat & FPdf, RtFloat & RPdf);
 
 private:
@@ -51,6 +56,9 @@ private:
 	RtColorRGB const * specularColor;
 	
 	RtFloat const * microfacetRoughness;
+
+	// 0 Beckmann, 1 GGX
+	RtInt const * distributionUsed;
 	
 	RtColorRGB const * indexOfRefraction;
 	RtColorRGB const * extinctionCoefficient;
@@ -99,6 +107,8 @@ private:
 	RtColorRGB m_SpecularColorDefault;
 
 	RtFloat m_RoughnessDefault;
+
+	RtInt distributionUsedDefault;
 
 	RtColorRGB indexOfRefractionDefault;
 	RtColorRGB extinctionCoefficientDefault;
