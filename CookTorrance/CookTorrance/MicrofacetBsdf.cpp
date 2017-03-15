@@ -122,6 +122,9 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 	RtFloat2 * xi = (RtFloat2 *) RixAlloca(sizeof(RtFloat2) * nPts);
 	rng->DrawSamples2D(nPts, xi);
 
+	RtFloat * lobeR = (RtFloat *) RixAlloca(sizeof(RtFloat) * nPts);
+	rng->DrawSamples1D(nPts, lobeR);
+
 	RtColorRGB *reflDiffuseWgt = NULL;
 
 	RtNormal3 facingNormal;
@@ -144,7 +147,13 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 			if (NdV > k_minfacing)
 			{
 				RtFloat alpha = RoughnessToAlpha(microfacetRoughness[i]);
-				Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha);
+				RtFloat cosTheta = 0.f;
+
+				// TODO: Translate this to lobes...
+				if(lobeR[i] > .5f || diffuseColor[i].IsBlack())
+					Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha);
+				else
+					RixCosDirectionalDistribution(xi[i], m_Nn[i], Ln[i], cosTheta);
 
 				RtFloat NdL = facingNormal.Dot(Ln[i]);
 
@@ -301,12 +310,13 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNo
 	// Shadowing
 	RtFloat G = EvaluateMaskingShadow(Wi, Wo, normal, tangent, RoughnessToAlpha(roughness));
 
-	float radiance = D * G / (4.f * cosThetaO);
-	outRadiance = specularColor * F * radiance + (diffuseColor * cosThetaI / M_PI);
+	// The reference material does not conserve specular + diffuse energy
+	RtFloat specularRadiance = D * G / (4.f * cosThetaO);
+	outRadiance = specularColor * F * specularRadiance + (diffuseColor * cosThetaI / M_PI);
 
 	RtFloat absCosThetaW = std::abs(WhCosTheta);
-	FPdf = D * absCosThetaW / (4.f * Dot(Wo, Wh));
-	RPdf = D * absCosThetaW / (4.f * Dot(Wi, Wh));
+	FPdf = ((D * absCosThetaW / (4.f * Dot(Wo, Wh))) + (F_INVPI)) * .5f;
+	RPdf = ((D * absCosThetaW / (4.f * Dot(Wi, Wh))) + (F_INVPI)) * .5f;
 }
 
 extern "C" PRMANEXPORT RixBxdfFactory *CreateRixBxdfFactory(const char *hint)
