@@ -22,13 +22,15 @@ RtFloat RoughnessToAlpha(RtFloat roughness)
 }
 
 MicrofacetBsdf::MicrofacetBsdf(RixShadingContext const * sc, RixBxdfFactory * bx, RixBXLobeTraits const & lobesWanted,
-	RtColorRGB const * DiffuseColor, RtColorRGB const * SpecularColor, RtFloat const * Roughness, RtFloat const * IOR) :
+	RtColorRGB const * DiffuseColor, RtColorRGB const * SpecularColor, RtFloat const * Roughness,
+	RtColorRGB const * indexOfRefraction, RtColorRGB const * absorptionCoefficient) :
 	RixBsdf(sc, bx),
 	m_lobesWanted(lobesWanted),
-	m_DiffuseColor(DiffuseColor),
-	m_SpecularColor(SpecularColor),
-	m_Roughness(Roughness),
-	m_IOR(IOR)
+	diffuseColor(DiffuseColor),
+	specularColor(SpecularColor),
+	microfacetRoughness(Roughness),
+	indexOfRefraction(indexOfRefraction),
+	extinctionCoefficient(absorptionCoefficient)
 {
 	RixBXLobeTraits lobes = s_reflBlinnLobeTraits;
 
@@ -141,14 +143,14 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 			if (NdV > k_minfacing)
 			{
-				RtFloat alpha = RoughnessToAlpha(m_Roughness[i]);
+				RtFloat alpha = RoughnessToAlpha(microfacetRoughness[i]);
 				Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha);
 
 				RtFloat NdL = facingNormal.Dot(Ln[i]);
 
 				if (NdL > 0.f)
 				{
-					EvaluateMicrofacetBRDF(NdV, NdL, facingNormal, m_Tn[i], m_DiffuseColor[i], m_SpecularColor[i], m_Roughness[i], m_IOR[i],
+					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], indexOfRefraction[i], extinctionCoefficient[i],
 						Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 
 					lobeSampled[i] = s_reflBlinnLobe;
@@ -188,7 +190,7 @@ void MicrofacetBsdf::EvaluateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 				if (NdL > 0.f)
 				{
-					EvaluateMicrofacetBRDF(NdV, NdL, facingNormal, m_Tn[i], m_DiffuseColor[i], m_SpecularColor[i], m_Roughness[i], m_IOR[i],
+					EvaluateMicrofacetBRDF(facingNormal, m_Tn[i], diffuseColor[i], specularColor[i], microfacetRoughness[i], indexOfRefraction[i], extinctionCoefficient[i],
 						Ln[i], m_Vn[i], reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 
 					lobesEvaluated[i] |= s_reflBlinnLobeTraits;
@@ -213,10 +215,12 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 	RtNormal3 const &Nn = m_Nn[index];
 	RtNormal3 const &Ngn = m_Ngn[index];
 	RtVector3 const &Vn = m_Vn[index];
-	RtColorRGB const &diff = m_DiffuseColor[index];
-	RtColorRGB const &spec = m_SpecularColor[index];
-	RtFloat const &roughness = m_Roughness[index];
-	RtFloat const &ior = m_IOR[index];
+	RtColorRGB const &diff = diffuseColor[index];
+	RtColorRGB const &spec = specularColor[index];
+	RtFloat const &roughness = microfacetRoughness[index];
+
+	RtColorRGB const &ior = indexOfRefraction[index];
+	RtColorRGB const &absorption = extinctionCoefficient[index];
 
 	// Make any lobes that we may evaluate or write to active lobes,
 	// initialize their lobe weights to zero and fetch a pointer to the
@@ -235,7 +239,7 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 
 			if (NdL > 0.f)
 			{
-				EvaluateMicrofacetBRDF(NdV, NdL, Nf, m_Tn[i], diff, spec, roughness, ior, Ln[i], Vn, reflDiffuseWgt[i], FPdf[i], RPdf[i]);
+				EvaluateMicrofacetBRDF(Nf, m_Tn[i], diff, spec, roughness, ior, absorption, Ln[i], Vn, reflDiffuseWgt[i], FPdf[i], RPdf[i]);
 				lobesEvaluated[i] |= s_reflBlinnLobeTraits;
 			}
 		}
@@ -267,8 +271,8 @@ RtFloat MicrofacetBsdf::EvaluateDistribution(RtFloat cosTheta, RtFloat roughness
 	return 0.f;
 }
 
-void MicrofacetBsdf::EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
-	const RtColorRGB & specularColor, const RtFloat & roughness, const RtFloat & ior, const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance,
+void MicrofacetBsdf::EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
+	const RtColorRGB & specularColor, const RtFloat & roughness, const RtColorRGB & ior, const RtColorRGB & extinction, const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance,
 	RtFloat & FPdf, RtFloat & RPdf)
 {
 	RtFloat cosThetaO = AbsDot(normal, Wo);
@@ -289,14 +293,16 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNo
 	RtFloat D = EvaluateDistribution(WhCosTheta, roughness);
 	
 	// Fresnel
-	RtFloat F = 0.f;
-	RixFresnelDielectric(Dot(Wh, Wi), 1.f / ior, &F);
+	RtColorRGB F = RtColorRGB(0.f);
+	RtColorRGB eta = RtColorRGB(1.f) / ior;
+	RtColorRGB kappa = ior / extinction; // TODO: Find the actual mapping to kappa
+	RixFresnelConductor(Dot(Wh, Wi), eta, kappa, &F);
 
 	// Shadowing
 	RtFloat G = EvaluateMaskingShadow(Wi, Wo, normal, tangent, RoughnessToAlpha(roughness));
 
-	float radiance = D * F * G / (4.f * cosThetaO);
-	outRadiance = specularColor * radiance + (diffuseColor * cosThetaI / M_PI);
+	float radiance = D * G / (4.f * cosThetaO);
+	outRadiance = specularColor * F * radiance + (diffuseColor * cosThetaI / M_PI);
 
 	RtFloat absCosThetaW = std::abs(WhCosTheta);
 	FPdf = D * absCosThetaW / (4.f * Dot(Wo, Wh));
@@ -319,7 +325,8 @@ MicrofacetBsdfFactory::MicrofacetBsdfFactory()
 	m_DiffuseColorDflt = RtColorRGB(.5f);
 	m_SpecularColorDefault = RtColorRGB(1.0f);
 	m_RoughnessDefault = .35f;
-	m_IORDefault = 1.5f;
+	indexOfRefractionDefault = RtColorRGB(1.5f);
+	extinctionCoefficientDefault = RtColorRGB(0.f); // Dielectric by default
 }
 
 MicrofacetBsdfFactory::~MicrofacetBsdfFactory()
@@ -359,7 +366,8 @@ enum paramIds
 	k_DiffuseColor,
 	k_SpecularColor,
 	k_Roughness,
-	k_IOR,
+	k_IndexOfRefraction,
+	k_ExtinctionCoefficient,
 	k_numParams
 };
 
@@ -372,7 +380,8 @@ MicrofacetBsdfFactory::GetParamTable()
 		RixSCParamInfo("DiffuseColor", k_RixSCColor),
 		RixSCParamInfo("SpecularColor", k_RixSCColor),
 		RixSCParamInfo("Roughness", k_RixSCFloat),
-		RixSCParamInfo("IOR", k_RixSCFloat),
+		RixSCParamInfo("IndexOfRefraction", k_RixSCColor),
+		RixSCParamInfo("ExtinctionCoefficient", k_RixSCColor),
 		RixSCParamInfo() // end of table
 	};
 	return &s_ptable[0];
@@ -411,20 +420,25 @@ RixBsdf * MicrofacetBsdfFactory::BeginScatter(RixShadingContext const *sCtx,
 	RtConstPointer instanceData)
 {
 	// Get all input data
-	RtColorRGB const * DiffuseColor;
-	RtColorRGB const * SpecularColor;
-	RtFloat const * Roughness;
-	RtFloat const * IOR;
-	sCtx->EvalParam(k_DiffuseColor, -1, &DiffuseColor, &m_DiffuseColorDflt, true);
-	sCtx->EvalParam(k_SpecularColor, -1, &SpecularColor, &m_SpecularColorDefault, true);
-	sCtx->EvalParam(k_Roughness, -1, &Roughness, &m_RoughnessDefault, true);
-	sCtx->EvalParam(k_IOR, -1, &IOR, &m_IORDefault, true);
+	RtColorRGB const * diffuseColor;
+	RtColorRGB const * specularColor;
+	RtFloat const * roughness;
+
+	RtColorRGB const * indexOfRefraction;
+	RtColorRGB const * extinctionCoefficient;
+
+	sCtx->EvalParam(k_DiffuseColor, -1, &diffuseColor, &m_DiffuseColorDflt, true);
+	sCtx->EvalParam(k_SpecularColor, -1, &specularColor, &m_SpecularColorDefault, true);
+	sCtx->EvalParam(k_Roughness, -1, &roughness, &m_RoughnessDefault, true);
+	sCtx->EvalParam(k_IndexOfRefraction, -1, &indexOfRefraction, &indexOfRefractionDefault, true);
+	sCtx->EvalParam(k_ExtinctionCoefficient, -1, &extinctionCoefficient, &extinctionCoefficientDefault, true);
 
 	RixShadingContext::Allocator pool(sCtx);
 	void *mem = pool.AllocForBxdf<MicrofacetBsdf>(1);
 
 	// Must use placement new to set up the vtable properly
-	MicrofacetBsdf *eval = new (mem) MicrofacetBsdf(sCtx, this, lobesWanted, DiffuseColor, SpecularColor, Roughness, IOR);
+	MicrofacetBsdf *eval = new (mem) MicrofacetBsdf(sCtx, this, lobesWanted, diffuseColor, specularColor, roughness, 
+		indexOfRefraction, extinctionCoefficient);
 
 	return eval;
 }

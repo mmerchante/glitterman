@@ -20,7 +20,7 @@
       <tag value="color"/>
     </tags>
     <help>
-      Specualr color. Also referred to as albedo.
+      Specular color.
     </help>
   </param>
   
@@ -33,15 +33,26 @@
       </help>
   </param>
 
-  <param name="IOR" type="float" default="1.5" max="5.0" min="1.0">
+  <param name="IndexOfRefraction" type="color" default="1.5 1.5 1.5"
+          widget="color">
     <tags>
-      <tag value="float"/>
+      <tag value="color"/>
     </tags>
     <help>
       Index of refraction of the material.
     </help>
   </param>
-  
+
+  <param name="ExtinctionCoefficient" type="color" default="0.0 0.0 0.0"
+          widget="color">
+    <tags>
+      <tag value="color"/>
+    </tags>
+    <help>
+      Extinction coefficient of the conductor material. Black for dielectric!
+    </help>
+  </param>
+
   <rfmdata nodeid="1053520"
      classification="shader/surface:rendernode/RenderMan/bxdf:swatch/rmanSwatch"/>
 </args>

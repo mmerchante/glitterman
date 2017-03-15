@@ -11,7 +11,8 @@ class MicrofacetBsdf : public RixBsdf
 {
 public:
 	MicrofacetBsdf(RixShadingContext const *sc, RixBxdfFactory *bx, RixBXLobeTraits const &lobesWanted,
-		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *SpecularHardness, RtFloat const * IOR);
+		RtColorRGB const *DiffuseColor, RtColorRGB const *SpecularColor, RtFloat const *SpecularHardness,
+		RtColorRGB const * indexOfRefraction, RtColorRGB const * extinctionCoefficient);
 
 	virtual RixBXEvaluateDomain GetEvaluateDomain();
 
@@ -39,18 +40,20 @@ private:
 	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness);
 
 	PRMAN_INLINE
-	void EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNormal3 &normal, const RtNormal3 & tangent, const RtColorRGB &diffuseColor,
-			const RtColorRGB &specularColor, const RtFloat &roughness, const RtFloat & ior, const RtVector3 &Wi, const RtVector3 &Wo,
-			RtColorRGB  &outRadiance, RtFloat &FPdf, RtFloat &RPdf);
+	void EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
+		const RtColorRGB & specularColor, const RtFloat & roughness, const RtColorRGB & ior, const RtColorRGB & absorption, 
+		const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance, RtFloat & FPdf, RtFloat & RPdf);
 
 private:
 	RixBXLobeTraits m_lobesWanted;
 	
-	RtColorRGB const * m_DiffuseColor;
-	RtColorRGB const * m_SpecularColor;
+	RtColorRGB const * diffuseColor;
+	RtColorRGB const * specularColor;
 	
-	RtFloat const * m_Roughness;
-	RtFloat const * m_IOR;
+	RtFloat const * microfacetRoughness;
+	
+	RtColorRGB const * indexOfRefraction;
+	RtColorRGB const * extinctionCoefficient;
 
 	RtPoint3 const * m_P;
 	RtVector3 const * m_Vn;
@@ -96,5 +99,7 @@ private:
 	RtColorRGB m_SpecularColorDefault;
 
 	RtFloat m_RoughnessDefault;
-	RtFloat m_IORDefault;
+
+	RtColorRGB indexOfRefractionDefault;
+	RtColorRGB extinctionCoefficientDefault;
 };
