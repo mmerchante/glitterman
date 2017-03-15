@@ -32,14 +32,14 @@ private:
 	RtVector3 SampleBeckmannDistribution(const RtFloat2& xi, const RtFloat alpha);
 	RtVector3 SampleDistribution(const RtFloat2& xi, const RtFloat3& normal, const RtFloat3& tangent, const RtVector3& Wo, const RtFloat alpha);
 
-	RtFloat EvaluateMaskingShadow(const RtVector3& Wi, const RtVector3& Wo, const RtVector3& Wh);
-	RtFloat BeckmannLambda(const RtVector3& Wi, const RtVector3& Wo, const RtVector3& Wh);
+	RtFloat EvaluateMaskingShadow(const RtVector3& Wi, const RtVector3& Wo, const RtNormal3& normal, const RtNormal3& tangent, const RtFloat alpha);
+	RtFloat BeckmannLambda(const RtVector3& W, const RtFloat alpha);
 
 	RtFloat EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness);
 	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness);
 
 	PRMAN_INLINE
-	void EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNormal3 &normal, const RtColorRGB &diffuseColor,
+	void EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNormal3 &normal, const RtNormal3 & tangent, const RtColorRGB &diffuseColor,
 			const RtColorRGB &specularColor, const RtFloat &roughness, const RtFloat & ior, const RtVector3 &Wi, const RtVector3 &Wo,
 			RtColorRGB  &outRadiance, RtFloat &FPdf, RtFloat &RPdf);
 
