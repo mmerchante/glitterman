@@ -6,6 +6,12 @@ static const unsigned char k_reflBlinnLobeId = 0;
 static RixBXLobeSampled s_reflBlinnLobe;
 static RixBXLobeTraits s_reflBlinnLobeTraits;
 
+RtFloat RoughnessToAlpha(RtFloat roughness)
+{
+	// This seems to be closer to PRMan's current implementation...
+	return std::max(roughness * roughness, .00001f);
+}
+
 MicrofacetBsdf::MicrofacetBsdf(RixShadingContext const * sc, RixBxdfFactory * bx, RixBXLobeTraits const & lobesWanted,
 	RtColorRGB const * DiffuseColor, RtColorRGB const * SpecularColor, RtFloat const * Roughness, RtFloat const * IOR) :
 	RixBsdf(sc, bx),
@@ -35,6 +41,50 @@ RixBXEvaluateDomain MicrofacetBsdf::GetEvaluateDomain()
 void MicrofacetBsdf::GetAggregateLobeTraits(RixBXLobeTraits * traits)
 {
 	*traits = m_lobesWanted;
+}
+
+// Samples in tangent space
+RtVector3 MicrofacetBsdf::SampleBeckmannDistribution(const RtFloat2& xi, const RtFloat alpha)
+{
+	RtFloat logSample = std::log(xi.x);
+
+	if (std::isinf(logSample))
+		logSample = 0.f;
+
+	RtFloat tan2Theta = - (alpha * alpha * logSample);
+	RtFloat phi = xi.y * F_TWOPI;
+
+	RtFloat cosTheta = (1.f / std::sqrt(std::max(0.0001f, 1.f + tan2Theta)));
+	RtFloat sinTheta = std::sqrt(std::max(0.f, 1.f - (cosTheta * cosTheta)));
+
+	return RixSphericalDirection(sinTheta, cosTheta, phi);
+}
+
+RtVector3 MicrofacetBsdf::SampleDistribution(const RtFloat2 & xi, const RtFloat3 & normal, const RtFloat3 & tangent, const RtVector3& Wo, const RtFloat alpha)
+{
+	RtFloat3 TY = Cross(normal, tangent);
+
+	RtNormal3 localWh = SampleBeckmannDistribution(xi, alpha);
+	RtVector3 Wh = RixChangeBasisFrom(localWh, tangent, TY, normal);
+
+	if (Dot(Wh, Wo) < 0.f) 
+		Wh *= -1.f;
+
+	Wh.Normalize();
+	RtVector3 Wi = RixReflect(Wo, Wh);
+	Wi.Normalize();
+	return Wi;
+}
+
+RtFloat MicrofacetBsdf::EvaluateMaskingShadow(const RtVector3 & Wi, const RtVector3 & Wo, const RtVector3 & Wh)
+{
+	//return 1.f / (1.f + BeckmannLambda(Wi) + BeckmannLambda(Wo));
+	return 1.f;
+}
+
+RtFloat MicrofacetBsdf::BeckmannLambda(const RtVector3 & Wi, const RtVector3 & Wo, const RtVector3 & Wh)
+{
+	return RtFloat();
 }
 
 void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLobeTraits const * lobesWanted, RixRNG * rng, 
@@ -67,11 +117,10 @@ void MicrofacetBsdf::GenerateSample(RixBXTransportTrait transportTrait, RixBXLob
 
 			if (NdV > k_minfacing)
 			{
-				RtFloat cosTheta = 0.f;
-				//RixCosDirectionalDistribution(xi[i], facingNormal, Ln[i], cosTheta);
-				RixUniformDirectionalDistribution(xi[i], facingNormal, Ln[i], cosTheta);
+				RtFloat alpha = RoughnessToAlpha(m_Roughness[i]);
+				Ln[i] = SampleDistribution(xi[i], m_Nn[i], m_Tn[i], m_Vn[i], alpha);
 
-				RtFloat NdL = cosTheta;// facingNormal.Dot(Ln[i]);
+				RtFloat NdL = facingNormal.Dot(Ln[i]);
 
 				if (NdL > 0.f)
 				{
@@ -148,7 +197,6 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 	// Make any lobes that we may evaluate or write to active lobes,
 	// initialize their lobe weights to zero and fetch a pointer to the
 	// lobe weight arrays.
-
 	RtColorRGB *reflDiffuseWgt = doDiff ? W.AddActiveLobe(s_reflBlinnLobe) : NULL;
 
 	RtNormal3 Nf;
@@ -170,14 +218,6 @@ void MicrofacetBsdf::EvaluateSamplesAtIndex(RixBXTransportTrait transportTrait, 
 	}
 }
 
-// Reference: pbrtv3
-RtFloat RoughnessToAlpha(RtFloat roughness) 
-{
-	roughness = std::max(roughness, .0001f);
-	RtFloat x = std::log(roughness);
-	return 1.62142f + 0.819955f * x + 0.1734f * x * x + 0.0171201f * x * x * x + 0.000640711f * x * x * x * x;
-}
-
 RtFloat MicrofacetBsdf::EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness)
 {
 	RtFloat cos2Theta = cosTheta * cosTheta;
@@ -187,15 +227,16 @@ RtFloat MicrofacetBsdf::EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness)
 		return 0.f;
 	
 	RtFloat cos4Theta = cos2Theta * cos2Theta;
-	RtFloat alpha2 = (roughness);
+	RtFloat alpha2 = RoughnessToAlpha(roughness);
 	alpha2 *= alpha2;
-	return std::exp(-tan2Theta / alpha2) / (M_PI * alpha2 * cos4Theta);
+	return std::exp(-tan2Theta / alpha2) / std::max(0.0001f, F_PI * alpha2 * cos4Theta);
 }
 
 RtFloat MicrofacetBsdf::EvaluateDistribution(RtFloat cosTheta, RtFloat roughness)
 {
 	if (cosTheta > 0.f)
 	{
+		// TODO: Choose GGX or Beckmann
 		return EvaluateBeckmann(cosTheta, roughness);
 	}
 
@@ -206,58 +247,31 @@ void MicrofacetBsdf::EvaluateMicrofacetBRDF(RtFloat NdV, RtFloat NdL, const RtNo
 	const RtColorRGB & specularColor, const RtFloat & roughness, const RtFloat & ior, const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance,
 	RtFloat & FPdf, RtFloat & RPdf)
 {
-	RtVector3 halfVector = (Wi + Wo);
-	halfVector.Normalize();
-	float halfVectorCosTheta = (halfVector.Dot(normal));
+	RtFloat cosThetaO = AbsDot(normal, Wo);
+	RtFloat cosThetaI = AbsDot(normal, Wi);
+	RtVector3 Wh = (Wi + Wo);
+
+	if (cosThetaI == 0.f || cosThetaO == 0.f || (Wh.x == 0.f && Wh.y == 0.f && Wh.z == 0.f))
+	{
+		outRadiance = RtColorRGB(0.f);
+		FPdf = 0.f;
+		RPdf = 0.f;
+		return;
+	}
 
 	// Evaluate our normal distribution function
-	float D = EvaluateDistribution(halfVectorCosTheta, roughness);
+	Wh.Normalize();
+	RtFloat WhCosTheta = Dot(Wh, normal);
+	RtFloat D = EvaluateDistribution(WhCosTheta, roughness);
+	
+	// Fresnel
+	RtFloat F = 0.f;
+	RixFresnelDielectric(Dot(Wh, Wi), 1.f / ior, &F);
 
-	float F = 0.f;
-	RixFresnelDielectric(NdV, 1.f / ior, &F);
-
-	// Shadow function
-	float IdN = normal.Dot(Wo);
-	float OdN = normal.Dot(Wi);
-
-	float G1, G2;
-	if (IdN <= 0.f)
-		G1 = 0.f;
-	else
-	{
-		float sinVSqrd = 1.f - IdN*IdN;
-		float tanV = sqrtf(sinVSqrd / (IdN*IdN));
-		float a = sqrtf(0.5f*roughness + 1.f) / tanV;
-		if (a<1.6f)
-		{
-			G1 = (3.535f*a + 2.181f*a*a) / (1.f + 2.276f*a + 2.577f*a*a);
-		}
-		else
-		{
-			G1 = 1.f;
-		}
-	}
-	if (OdN <= 0.f)
-		G2 = 0.f;
-	else
-	{
-		float sinVSqrd = 1.f - OdN*OdN;
-		float tanV = sqrtf(sinVSqrd / (OdN*OdN));
-		float a = sqrtf(0.5f*roughness + 1.f) / tanV;
-		if (a<1.6f)
-		{
-			G2 = (3.535f*a + 2.181f*a*a) / (1.f + 2.276f*a + 2.577f*a*a);
-		}
-		else
-		{
-			G2 = 1.f;
-		}
-	}
-
-	float radiance = (G1 * G2 * D * F * NdL) / (4.f * IdN * OdN);
-	outRadiance = specularColor * radiance + (diffuseColor * NdL / M_PI);
-	FPdf = D * G1 / IdN;
-	RPdf = D * G2 / OdN;
+	float radiance = D * F / (4.f * cosThetaO);// / (cosThetaI * 4.f);// (G1* G2  * D * F * NdL) / (4.f * IdN * OdN);
+	outRadiance = specularColor * radiance;// +(diffuseColor * NdL / M_PI);
+	FPdf = D / (4.f * cosThetaI);// D * G1 / (4.f * IdN);
+	RPdf = D / (4.f * cosThetaO);// D * G2 / (4.f * OdN);
 }
 
 extern "C" PRMANEXPORT RixBxdfFactory *CreateRixBxdfFactory(const char *hint)
@@ -274,7 +288,7 @@ extern "C" PRMANEXPORT void DestroyRixBxdfFactory(RixBxdfFactory *bxdf)
 MicrofacetBsdfFactory::MicrofacetBsdfFactory()
 {
 	m_DiffuseColorDflt = RtColorRGB(.5f);
-	m_SpecualrColorDflt = RtColorRGB(1.0f);
+	m_SpecularColorDefault = RtColorRGB(1.0f);
 	m_RoughnessDefault = .35f;
 	m_IORDefault = 1.5f;
 }
@@ -373,7 +387,7 @@ RixBsdf * MicrofacetBsdfFactory::BeginScatter(RixShadingContext const *sCtx,
 	RtFloat const * Roughness;
 	RtFloat const * IOR;
 	sCtx->EvalParam(k_DiffuseColor, -1, &DiffuseColor, &m_DiffuseColorDflt, true);
-	sCtx->EvalParam(k_SpecularColor, -1, &SpecularColor, &m_SpecualrColorDflt, true);
+	sCtx->EvalParam(k_SpecularColor, -1, &SpecularColor, &m_SpecularColorDefault, true);
 	sCtx->EvalParam(k_Roughness, -1, &Roughness, &m_RoughnessDefault, true);
 	sCtx->EvalParam(k_IOR, -1, &IOR, &m_IORDefault, true);
 

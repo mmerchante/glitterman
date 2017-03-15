@@ -5,7 +5,7 @@
 #include "RixBxdf.h"
 #include "RixRNG.h"
 #include "RixShadingUtils.h"
-#include <cstring> // memset
+#include <cstring>
 
 class MicrofacetBsdf : public RixBsdf
 {
@@ -28,6 +28,12 @@ public:
 		RixBXLobeWeights &W, RtFloat *FPdf, RtFloat *RPdf);
 
 private:
+
+	RtVector3 SampleBeckmannDistribution(const RtFloat2& xi, const RtFloat alpha);
+	RtVector3 SampleDistribution(const RtFloat2& xi, const RtFloat3& normal, const RtFloat3& tangent, const RtVector3& Wo, const RtFloat alpha);
+
+	RtFloat EvaluateMaskingShadow(const RtVector3& Wi, const RtVector3& Wo, const RtVector3& Wh);
+	RtFloat BeckmannLambda(const RtVector3& Wi, const RtVector3& Wo, const RtVector3& Wh);
 
 	RtFloat EvaluateBeckmann(RtFloat cosTheta, RtFloat roughness);
 	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness);
@@ -87,7 +93,7 @@ private:
 	/// @brief Defualt colour of our blinn BRDF
 	//----------------------------------------------------------------------------------------------------------------------
 	RtColorRGB m_DiffuseColorDflt;
-	RtColorRGB m_SpecualrColorDflt;
+	RtColorRGB m_SpecularColorDefault;
 
 	RtFloat m_RoughnessDefault;
 	RtFloat m_IORDefault;
