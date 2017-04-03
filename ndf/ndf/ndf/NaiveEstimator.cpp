@@ -1,7 +1,8 @@
 #include "NaiveEstimator.h"
 #include <SFML\Graphics.hpp>
+#include "globals.h"
 
-#define BINS_COUNT 128
+#define BINS_COUNT 8
 
 NaiveEstimator::NaiveEstimator(std::string normalMapFilename) : normalMap(nullptr), normalMapWidth(100), normalMapHeight(100)
 {
@@ -14,12 +15,11 @@ NaiveEstimator::~NaiveEstimator()
 
 float NaiveEstimator::Estimate(const glm::vec3 & w)
 {
-	int bins[BINS_COUNT] = { 0 };
-
 	Vector2i from(0, 0);
-	Vector2i to(16, 16);
+	Vector2i to(128, 128);
 
-	int pixels = (to.x - from.x) * (to.y - from.y);
+	int pixels = glm::abs((to.x - from.x) * (to.y - from.y));
+	float ndf = 0.f;
 
 	for (int x = from.x; x < to.x; x++)
 	{
@@ -28,16 +28,10 @@ float NaiveEstimator::Estimate(const glm::vec3 & w)
 			int i = (y * normalMapWidth) + x;
 			Vector3f wh = this->normalMap[i];
 
-			float d = glm::clamp(glm::dot(wh, w), 0.f, 1.f);
-
-			int bin = (BINS_COUNT - 1) * d;
-			bins[bin]++;
+			float d = glm::clamp(glm::dot(wh, w), 0.f, 0.9999f);
+			ndf += 1.f / (1.f - d);
 		}
 	}
-
-	float ndf = 0.f;
-	for (int b = 0; b < BINS_COUNT; b++)
-		ndf = std::max(ndf, bins[b] * (b / (float)BINS_COUNT));
 
 	return ndf / pixels;
 }

@@ -133,6 +133,7 @@
     <ClInclude Include="globals.h" />
     <ClInclude Include="NaiveEstimator.h" />
     <ClInclude Include="NDFEstimator.h" />
+    <ClInclude Include="pcg32.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
