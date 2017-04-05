@@ -10,7 +10,7 @@ Currently, we have a naive estimator of the NDF of an arbitrary region within a 
 NDF of a normal map with flakes.
 
 --------------
-We have a GGX/Beckmann microfacet BxDF that is very similar to PxrSurface's specular reflection model. The objective of this is understanding PRMan's code with a simple problem before delving into more complicated problems.
+We developed a GGX/Beckmann microfacet BxDF that is very similar to PxrSurface's specular reflection model. The objective of this is understanding PRMan's code with a simple problem before delving into more complicated microfacet issues.
 
 ![Metal](maya/images/Microfacet_Comparison.png)
 
