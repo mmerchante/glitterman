@@ -62,22 +62,33 @@ void CurvedElementsFlatlandNormalImage(sf::Image& image, int width, int height, 
 	image.create(width, height, sf::Color::Black);
 
 	// Amount of gaussians
-	int m = 30;
+	int m = 60;
 	glm::vec3 * gaussianSeeds = new glm::vec3[m];
+	glm::mat2 * invCovarianceMatrices = new glm::mat2[m];
 
 	float h = 1.f / m;
 	float sigmaH = h / glm::sqrt(8.f * glm::log(2.f));
 
+	float sigmaH2 = sigmaH * sigmaH;
+	float sigmaR2 = sigmaR * sigmaR;
+
+	glm::mat2 invCov;
 	for (int i = 0; i < m; i++)
 	{
 		float x = i * h; // ui
 		float y = GenerateFlatlandNormal(x); // n(ui)
 		float derivative = GenerateFlatlandNormalDerivative(x); // n'(ui)
 		gaussianSeeds[i] = glm::vec3(x, y, derivative);
+
+		invCov[0][0] = (1.f / sigmaH2) + (derivative * derivative / sigmaR2);
+		invCov[1][0] = (-derivative / sigmaR2);
+		invCov[1][1] = (1.f / sigmaR2);
+		invCov[0][1] = (-derivative / sigmaR2);
+		invCovarianceMatrices[i] = invCov;
 	}
 
-	float sigmaH2 = 2.f * sigmaH * sigmaH;
-	float sigmaR2 = 2.f * sigmaR * sigmaR;
+	sigmaH2 *= 2.f;
+	sigmaR2 *= 2.f;
 
 	for (int x = 0; x < width; x++)
 	{
@@ -92,13 +103,18 @@ void CurvedElementsFlatlandNormalImage(sf::Image& image, int width, int height, 
 				float fX = x / (float)width; // Equivalent to u
 				float fY = y / (float)height; // Equivalent to s
 
-				float ci = 1.f;
+				float Ci = 1.f;
 
-				float positionBandGi = glm::pow(fX - gaussianSeed.x, 2.f) / sigmaH2;
+				// Explicit approach
+				//float positionBandGi = glm::pow(fX - gaussianSeed.x, 2.f) / sigmaH2;
+				//float normalQuad = fY - gaussianSeed.y - (gaussianSeed.z * (fX - gaussianSeed.x));
+				//float normalBandGi = glm::pow(-normalQuad, 2.f) / sigmaR2;
+				//float Gi = ci * glm::exp(-positionBandGi) * glm::exp(-normalBandGi);
 
-				float normalQuad = fY - gaussianSeed.y - (gaussianSeed.z * (fX - gaussianSeed.x));
-				float normalBandGi = glm::pow(-normalQuad, 2.f) / sigmaR2;
-				float Gi = ci * glm::exp(-positionBandGi) * glm::exp(-normalBandGi);
+				// Matrix approach
+				glm::vec2 dX(fX - gaussianSeed.x, fY - gaussianSeed.y);
+				float quad = -0.5f * glm::dot(dX, invCovarianceMatrices[i] * dX);
+				float Gi = Ci * glm::exp(quad);
 
 				accum += Gi;
 			}
