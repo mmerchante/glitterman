@@ -12,7 +12,7 @@ Estimation with 80 flat Gaussian elements.
 
 Estimation with curved 60 Gaussian elements. Note the improved estimation.
 
-![NDF](ndf/ndf/ndf/output/flatland_flat_elements.png)
+![NDF](ndf/ndf/ndf/output/flatland_curved_elements_60.png)
 
 --------------
 We developed a GGX/Beckmann microfacet BxDF that is very similar to PxrSurface's specular reflection model. The objective of this is understanding PRMan's code with a simple problem before delving into more complicated microfacet issues.
