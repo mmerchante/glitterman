@@ -10,6 +10,7 @@ public:
 	virtual ~NaiveEstimator();
 
 	virtual float Estimate(const glm::vec3& w);
+	void BinningMethod(float * pixels, int width, int height);
 
 private:
 

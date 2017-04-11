@@ -4,6 +4,9 @@
 
 #include <glm/glm.hpp>
 #include <glm/common.hpp>
+#include <glm/trigonometric.hpp>
+#include <glm/geometric.hpp>
+#include <glm/gtc/constants.hpp>
 
 typedef glm::vec3 Color3f;
 typedef glm::vec3 Point3f;
