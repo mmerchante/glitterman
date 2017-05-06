@@ -75,7 +75,12 @@ glm::mat2 SampleNormalMapJacobian(const sf::Image& normalMap, glm::vec2 uv, floa
 	// fx/dx fx/dy
 	// fy/dx fy/dy
 	// Remember glm is column major
-	return glm::mat2(xDiff.x, yDiff.x, xDiff.y, yDiff.y) * (.5f / h);
+	glm::mat2 J;
+	J[0][0] = xDiff.x;
+	J[0][1] = yDiff.x;
+	J[1][0] = xDiff.y;
+	J[1][1] = yDiff.y;
+	return J * (.5f / h);
 }
 
 struct GaussianElementData
@@ -86,7 +91,23 @@ struct GaussianElementData
 	glm::mat2 A;
 	glm::mat2 B;
 	glm::mat2 C;
+
+	float coeff;
 };
+
+
+inline
+float EvaluateGaussian(float c, const glm::vec2& x, const glm::vec2& u, const glm::mat2& InvCov)
+{
+	float inner = glm::dot(x - u, InvCov * (x - u));
+	return c * glm::exp(-.5f * inner);
+}
+
+inline
+float GetGaussianCoefficient(const glm::mat2& InvCov)
+{
+	return 1.f / glm::sqrt(glm::determinant(2.f * glm::pi<float>() * glm::inverse(InvCov)));
+}
 
 void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int height, float sigmaR)
 {
@@ -127,19 +148,49 @@ void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int 
 		data.B = -trJacobian * invSigmaR2;
 		data.C = glm::mat2(invSigmaR2);
 
+		glm::mat4 invCov4D;
+
+		// Upper left
+		invCov[0][0] = data.A[0][0];
+		invCov[0][1] = data.A[0][1];
+		invCov[1][0] = data.A[1][0];
+		invCov[1][1] = data.A[1][1];
+
+		// Upper right
+		invCov[2][0] = data.B[0][0];
+		invCov[2][1] = data.B[0][1];
+		invCov[3][0] = data.B[1][0];
+		invCov[3][1] = data.B[1][1];
+
+		// Lower left
+		glm::mat2 trB = glm::transpose(data.B);
+		invCov[0][2] = trB[0][0];
+		invCov[0][3] = trB[0][1];
+		invCov[1][2] = trB[1][0];
+		invCov[1][3] = trB[1][1];
+
+		// Lower right
+		invCov[2][2] = data.C[0][0];
+		invCov[2][3] = data.C[0][1];
+		invCov[3][2] = data.C[1][0];
+		invCov[3][3] = data.C[1][1];
+
+		data.coeff = 1.f / glm::sqrt(glm::determinant(2.f * glm::pi<float>() * glm::inverse(invCov)));
+
 		gaussians[i] = data;
 	}
 
-	sigmaH2 *= 2.f;
-	sigmaR2 *= 2.f;
-
 	glm::vec2 regionSize = glm::vec2(32, 32);
-	glm::vec2 from = glm::vec2(100, 100);
-	glm::vec2 scalingFactor = glm::vec2((float)mX / regionSize.x, (float)mY / regionSize.y);
-
+	glm::vec2 from = glm::vec2(222, 222);
 
 	float * ndf = new float[width * height];
 	float cumulativeImage = 0.f;
+
+	float footprintRadius = regionSize.x * .5f / (float)mX;
+	float sigmaP = footprintRadius * .25f;
+	
+	glm::mat2 footprintCovarianceInv = glm::inverse(glm::mat2(sigmaP * sigmaP));
+	glm::vec2 footprintMean = (from + regionSize * .5f) * glm::vec2(1.f / mX, 1.f / mY);
 
 	// For each direction, S
 	for (int x = 0; x < width; x++)
@@ -149,7 +200,11 @@ void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int 
 			float accum = 0.f;
 			float s = x / (float)width;
 			float t = y / (float)height;
-
+					/*	
+			glm::vec2 imageS = glm::vec2((s * 2.f) - 1.f, (t * 2.f) - 1.f);
+			if (glm::length(imageS) > 1.f)
+				continue;
+*/
 			// For each gaussian in the region...
 			for (int gX = from.x; gX < regionSize.x + from.x; gX++)
 			{
@@ -158,29 +213,34 @@ void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int 
 					GaussianElementData data = gaussians[gY * mX + gX];
 					glm::vec4 gaussianSeed = data.seed;
 
+					// Direction, S - N(Xi)
 					glm::vec2 S((s * 2.f) - 1.f, (t * 2.f) - 1.f);
-
-					//S = glm::vec2(gaussianSeed.z, gaussianSeed.w) - S;
-					S -= glm::vec2(gaussianSeed.z, gaussianSeed.w);
+					S = S - glm::vec2(gaussianSeed.z, gaussianSeed.w);
 
 					// We reduce the 4D gaussian into 2D by fixing S, see appendix
 					glm::mat2 invCov = data.A;
 					glm::vec2 u0 = -((glm::inverse(data.A)) * data.B) * S;
-
 					float inner = glm::dot(S, data.C * S) - glm::dot(u0, data.A * u0);
-					float c = 1.f * glm::exp(-0.5f * inner);
+					float c = data.coeff * glm::exp(-0.5f * inner);
 
-					// TODO: Calculate the resulting gaussian by multiplying Gp * Gi...
+					// Calculate the resulting gaussian by multiplying Gp * Gi...
+					// TODO: Get the actual footprint based on surface
+					glm::mat2 resultInvCovariance = invCov + footprintCovarianceInv;
+					glm::mat2 resultCovariance = glm::inverse(resultInvCovariance);
+					glm::vec2 resultMean = resultCovariance * (invCov * u0 + footprintCovarianceInv * (footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y)));
 
-					// Analytically integrate the 2D gaussian
-					// Remember, dimensions = 2
-					glm::mat2 covariance = glm::inverse(invCov);
-					float integral = c * 2.f * glm::pi<float>() * glm::sqrt(glm::determinant(covariance));
+					float resultC = EvaluateGaussian(c, resultMean, u0, invCov) *
+						EvaluateGaussian(GetGaussianCoefficient(footprintCovarianceInv), resultMean, footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y), footprintCovarianceInv);
+
+					float integral = resultC * 2.f * glm::pi<float>() * glm::sqrt(glm::determinant(resultCovariance));
 
 					accum += integral;
 				}
 			}
-
+/*
+			glm::vec2 X = glm::vec2(s, t);
+			accum = EvaluateGaussian(1.f, X, footprintMean, footprintCovarianceInv);
+*/
 			cumulativeImage = glm::max(cumulativeImage, accum);			
 			ndf[y * width + x] = accum;
 		}
@@ -541,12 +601,12 @@ sf::Image Test4D(std::string normalMapFilename)
 
 int main()
 {
-	int width = 256;
-	int height = 256;
+	int width = 512;
+	int height = 512;
 	sf::RenderWindow window(sf::VideoMode(width, height), "NDF Estimator");
 	sf::RectangleShape background(sf::Vector2f(width, height));
 
-	std::string filename("blender.png");
+	std::string filename("cutlery.png");
 
 	NaiveEstimator estimator("images/" + filename);
 
