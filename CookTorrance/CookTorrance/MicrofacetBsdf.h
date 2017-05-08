@@ -45,7 +45,7 @@ private:
 	RtFloat EvaluateDistribution(RtFloat cosTheta, RtFloat roughness, RtInt distribution);
 
 	PRMAN_INLINE
-	void EvaluateMicrofacetBRDF(const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
+	void EvaluateMicrofacetBRDF(const RtFloat2& uv, const RtNormal3 & normal, const RtNormal3 & tangent, const RtColorRGB & diffuseColor,
 		const RtColorRGB & specularColor, const RtFloat & roughness, const RtInt & distribution, const RtColorRGB & ior, const RtColorRGB & absorption,
 		const RtVector3& Wi, const RtVector3& Wo, RtColorRGB & outRadiance, RtFloat & FPdf, RtFloat & RPdf);
 
@@ -64,6 +64,8 @@ private:
 	RtColorRGB const * extinctionCoefficient;
 
 	RtPoint3 const * m_P;
+	RtFloat const * m_U;
+	RtFloat const * m_V;
 	RtVector3 const * m_Vn;
 	RtVector3 const * m_Tn;
 	RtNormal3 const * m_Nn;
