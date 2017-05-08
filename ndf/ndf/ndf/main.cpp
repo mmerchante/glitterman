@@ -194,8 +194,9 @@ void RenderJacobian(sf::Image& image, sf::Image& normalMap, int width, int heigh
 
 void CurvedElementsIntegrationThread(int threadNumber, int bucketHeight, int width, int height, int mX, int mY, GaussianElementData * gaussians, float * ndf)
 {
-	glm::vec2 regionSize = glm::vec2(12, 12);
-	glm::vec2 from = glm::vec2(64, 64);	
+	glm::vec2 regionCenter = glm::vec2(256, 256);
+	glm::vec2 regionSize = glm::vec2(256, 256);
+	glm::vec2 from = regionCenter - regionSize * .5f;
 
 	float footprintRadius = regionSize.x * .5f / (float)mX;
 	float sigmaP = footprintRadius * .5f;
@@ -206,7 +207,7 @@ void CurvedElementsIntegrationThread(int threadNumber, int bucketHeight, int wid
 	pcg32 generator;
 	generator.seed(14041956 + threadNumber * 127361);
 
-	int samplesPerPixel = 16;
+	int samplesPerPixel = 8;
 
 	int fromY = bucketHeight * threadNumber;
 	int toY = glm::min(bucketHeight * (threadNumber + 1), height);
@@ -271,7 +272,7 @@ void CurvedElementsIntegrationThread(int threadNumber, int bucketHeight, int wid
 				}
 			}
 
-			accum /= (mX / (float)regionSize.x) * .85f;
+			accum /= (mX / (float)regionSize.x) * .8f;
 			accum /= samplesPerPixel;
 
 			ndf[y * width + x] = accum;
@@ -666,8 +667,8 @@ sf::Image TestFlatland()
 
 sf::Image Test4D(std::string normalMapFilename)
 {
-	int width = 512;
-	int height = 512;
+	int width = 256;
+	int height = 256;
 
 	// Intrinsic roughness
 	float sigmaR = .005f;
@@ -694,7 +695,7 @@ int main()
 	sf::RenderWindow window(sf::VideoMode(width, height), "NDF Estimator");
 	sf::RectangleShape background(sf::Vector2f(width, height));
 
-	std::string filename("scratches.png");
+	std::string filename("normal5.png");
 
 	NaiveEstimator estimator("images/" + filename);
 
