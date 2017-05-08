@@ -535,12 +535,12 @@ float EvaluatePNDF(glm::vec2 uv, glm::vec2 st)
 	int mY = normalMap.height;
 
 	glm::vec2 regionCenter = uv;
-	glm::vec2 regionSize = glm::vec2(16, 16);
+	glm::vec2 regionSize = glm::vec2(12, 12);
 	glm::vec2 from = glm::clamp(regionCenter - regionSize * .5f, glm::vec2(), glm::vec2(mX - 1, mY - 1));
 	glm::vec2 to = glm::clamp(regionCenter + regionSize * .5f, glm::vec2(), glm::vec2(mX - 1, mY - 1));
 
 	float footprintRadius = regionSize.x * .5f / (float)mX;
-	float sigmaP = footprintRadius * .5f;
+	float sigmaP = footprintRadius * 0.0625f;
 
 	glm::mat2 footprintCovarianceInv = glm::inverse(glm::mat2(sigmaP * sigmaP));
 	glm::vec2 footprintMean = (from + regionSize * .5f) * glm::vec2(1.f / mX, 1.f / mY);
@@ -584,7 +584,7 @@ float EvaluatePNDF(glm::vec2 uv, glm::vec2 st)
 		}
 	}
 
-	accum /= (mX / (float)regionSize.x) * .8f;
+	accum /= (mX / (float)regionSize.x);
 
 	return accum;
 }
@@ -723,7 +723,7 @@ void InitializeGaussianData()
 
 	float h = 1.f / mX; // Texel density
 	float sigmaH = h / glm::sqrt(8.f * glm::log(2.f));
-	float sigmaR = .005f;
+	float sigmaR = .0065f;
 
 	float sigmaH2 = sigmaH * sigmaH;
 	float sigmaR2 = sigmaR * sigmaR;
