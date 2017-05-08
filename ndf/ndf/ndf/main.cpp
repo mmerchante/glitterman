@@ -1,4 +1,6 @@
 #include <SFML/Graphics.hpp>
+#include <iostream>
+#include <thread>
 
 #include "pcg32.h"
 #include "globals.h"
@@ -57,19 +59,75 @@ void GenerateFlatlandNormalImage(sf::Image& image, int width, int height)
 	}
 }
 
-inline
-glm::vec2 SampleNormalMap(const sf::Image& normalMap, glm::vec2 uv)
+glm::vec2 SampleRawNormal(const sf::Image& normal, int x, int y)
 {
-	uv = glm::clamp(uv, glm::vec2(0.f), glm::vec2(1.f - glm::epsilon<float>()));
-	sf::Color rawNormal = normalMap.getPixel(uv.x * normalMap.getSize().x, uv.y * normalMap.getSize().y);
-	return glm::vec2(rawNormal.r / 255.f, rawNormal.g / 255.f) * 2.0f - glm::vec2(1.0);
+	int w = normal.getSize().x;
+	int h = normal.getSize().y;
+
+	x = glm::clamp(x, 0, w - 1);
+	y = glm::clamp(y, 0, h - 1);
+
+	sf::Color c = normal.getPixel(x, y);
+	return glm::vec2(c.r / 255.f, c.g / 255.f) * 2.0f - glm::vec2(1.0);
 }
 
 inline
-glm::mat2 SampleNormalMapJacobian(const sf::Image& normalMap, glm::vec2 uv, float h)
+glm::vec2 SampleNormalMap(const sf::Image& normalMap, glm::vec2 uv)
 {
-	glm::vec2 xDiff = SampleNormalMap(normalMap, uv + glm::vec2(h, 0.f)) - SampleNormalMap(normalMap, uv - glm::vec2(h, 0.f));
-	glm::vec2 yDiff = SampleNormalMap(normalMap, uv + glm::vec2(0.f, h)) - SampleNormalMap(normalMap, uv - glm::vec2(0.f, h));
+	uv = glm::fract(uv);
+	int w = normalMap.getSize().x;
+	int h = normalMap.getSize().y;
+	
+	int x = uv.x * w;
+	int y = uv.y * h;
+
+	glm::vec2 st = glm::vec2((uv.x * w) - x, (uv.y * h) - y);
+
+	glm::vec2 p1 = SampleRawNormal(normalMap, x, y);
+	glm::vec2 p2 = SampleRawNormal(normalMap, x + 1, y);
+	glm::vec2 l1 = glm::mix(p1, p2, st.x);
+
+	glm::vec2 p3 = SampleRawNormal(normalMap, x, y + 1);
+	glm::vec2 p4 = SampleRawNormal(normalMap, x + 1, y + 1);
+	glm::vec2 l2 = glm::mix(p3, p4, st.x);
+
+	return glm::mix(l1, l2, st.y);
+}
+
+inline
+glm::mat2 SampleNormalMapJacobian(const sf::Image& normalMap, glm::vec2 uv)
+{
+	float hX = 1.f / normalMap.getSize().x;
+	float hY = 1.f / normalMap.getSize().y;
+
+	glm::vec2 xDiff = glm::vec2(0.f);
+	xDiff += SampleNormalMap(normalMap, uv + glm::vec2(hX, hY)) * 1.f;
+	xDiff += SampleNormalMap(normalMap, uv + glm::vec2(hX, 0)) * 2.f;
+	xDiff += SampleNormalMap(normalMap, uv + glm::vec2(hX, -hY)) * 1.f;
+
+	xDiff += SampleNormalMap(normalMap, uv - glm::vec2(hX, hY)) * -1.f;
+	xDiff += SampleNormalMap(normalMap, uv - glm::vec2(hX, 0)) * -2.f;
+	xDiff += SampleNormalMap(normalMap, uv - glm::vec2(hX, -hY)) * -1.f;
+
+	glm::vec2 yDiff;
+	yDiff += SampleNormalMap(normalMap, uv + glm::vec2(hX, hY)) * 1.f;
+	yDiff += SampleNormalMap(normalMap, uv + glm::vec2(0 , hY)) * 2.f;
+	yDiff += SampleNormalMap(normalMap, uv + glm::vec2(-hX, hY)) * 1.f;
+
+	yDiff += SampleNormalMap(normalMap, uv - glm::vec2(hX, hY)) * -1.f;
+	yDiff += SampleNormalMap(normalMap, uv - glm::vec2(0 , hY)) * -2.f;
+	yDiff += SampleNormalMap(normalMap, uv - glm::vec2(-hX, hY)) * -1.f;
+
+	xDiff /= 8.f * hX;
+	yDiff /= 8.f * hY;
+	
+	/*
+	glm::vec2 xDiff = SampleNormalMap(normalMap, uv + glm::vec2(hX, 0.f)) - SampleNormalMap(normalMap, uv - glm::vec2(hX, 0.f));
+	glm::vec2 yDiff = SampleNormalMap(normalMap, uv + glm::vec2(0.f, hY)) - SampleNormalMap(normalMap, uv - glm::vec2(0.f, hY));
+
+	xDiff /= 2.f * hX;
+	yDiff /= 2.f * hY;
+	*/
 
 	// Encoded as 
 	// fx/dx fx/dy
@@ -78,9 +136,10 @@ glm::mat2 SampleNormalMapJacobian(const sf::Image& normalMap, glm::vec2 uv, floa
 	glm::mat2 J;
 	J[0][0] = xDiff.x;
 	J[0][1] = yDiff.x;
+
 	J[1][0] = xDiff.y;
 	J[1][1] = yDiff.y;
-	return J * (.5f / h);
+	return J;
 }
 
 struct GaussianElementData
@@ -95,7 +154,6 @@ struct GaussianElementData
 	float coeff;
 };
 
-
 inline
 float EvaluateGaussian(float c, const glm::vec2& x, const glm::vec2& u, const glm::mat2& InvCov)
 {
@@ -106,7 +164,119 @@ float EvaluateGaussian(float c, const glm::vec2& x, const glm::vec2& u, const gl
 inline
 float GetGaussianCoefficient(const glm::mat2& InvCov)
 {
-	return 1.f / glm::sqrt(glm::determinant(2.f * glm::pi<float>() * glm::inverse(InvCov)));
+	float det = glm::determinant(2.f * glm::pi<float>() * glm::inverse(InvCov));
+
+	if(det > 0.f)
+		return 1.f / glm::sqrt(det);
+
+	return 0.f;
+}
+
+void RenderJacobian(sf::Image& image, sf::Image& normalMap, int width, int height)
+{
+	width = normalMap.getSize().x;
+	height = normalMap.getSize().y;
+	image.create(width, height, sf::Color::Black);
+
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			glm::vec2 uv = glm::vec2(x / (float)width, y / (float)height);
+			glm::mat2 J = SampleNormalMapJacobian(normalMap, uv);
+
+			float det = glm::abs(glm::determinant(J));
+			sf::Uint8 d = glm::clamp(det * 255.f, 0.f, 255.f);
+			image.setPixel(x, y, sf::Color(d, d, d, 255));
+		}
+	}
+}
+
+void CurvedElementsIntegrationThread(int threadNumber, int bucketHeight, int width, int height, int mX, int mY, GaussianElementData * gaussians, float * ndf)
+{
+	glm::vec2 regionSize = glm::vec2(12, 12);
+	glm::vec2 from = glm::vec2(64, 64);	
+
+	float footprintRadius = regionSize.x * .5f / (float)mX;
+	float sigmaP = footprintRadius * .5f;
+
+	glm::mat2 footprintCovarianceInv = glm::inverse(glm::mat2(sigmaP * sigmaP));
+	glm::vec2 footprintMean = (from + regionSize * .5f) * glm::vec2(1.f / mX, 1.f / mY);
+
+	pcg32 generator;
+	generator.seed(14041956 + threadNumber * 127361);
+
+	int samplesPerPixel = 16;
+
+	int fromY = bucketHeight * threadNumber;
+	int toY = glm::min(bucketHeight * (threadNumber + 1), height);
+
+	float invW = 1.f / (float) width;
+	float invH = 1.f / (float) height;
+
+	// For each direction, S
+	for (int y = fromY; y < toY; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			float accum = 0.f;
+			float s = x * invW;
+			float t = y * invH;
+
+			glm::vec2 imageS = glm::vec2((s * 2.f) - 1.f, (t * 2.f) - 1.f);
+
+			// Outside our disk
+			if (glm::length(imageS) > .975f)
+			{
+				ndf[y * width + x] = 0.f;
+				continue;
+			}
+
+			for (int sample = 0; sample < samplesPerPixel; sample++)
+			{
+				s = (x + generator.nextFloat()) * invW;
+				t = (y + generator.nextFloat()) * invH;
+
+				// For each gaussian in the region...
+				for (int gX = from.x; gX < regionSize.x + from.x; gX++)
+				{
+					for (int gY = from.y; gY < regionSize.y + from.y; gY++)
+					{
+						GaussianElementData data = gaussians[gY * mX + gX];
+						glm::vec4 gaussianSeed = data.seed;
+
+						// Direction, S - N(Xi)
+						glm::vec2 S((s * 2.f) - 1.f, (t * 2.f) - 1.f);
+						S = S - glm::vec2(gaussianSeed.z, gaussianSeed.w);
+
+						// We reduce the 4D gaussian into 2D by fixing S, see appendix
+						glm::mat2 invCov = data.A;
+						glm::vec2 u0 = -((glm::inverse(data.A)) * data.B) * S;
+						float inner = glm::dot(S, data.C * S) - glm::dot(u0, data.A * u0);
+						float c = data.coeff * glm::exp(-0.5f * inner);
+
+						// Calculate the resulting gaussian by multiplying Gp * Gi
+						glm::mat2 resultInvCovariance = invCov + footprintCovarianceInv;
+						glm::mat2 resultCovariance = glm::inverse(resultInvCovariance);
+						glm::vec2 resultMean = resultCovariance * (invCov * u0 + footprintCovarianceInv * (footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y)));
+
+						float resultC = EvaluateGaussian(c, resultMean, u0, invCov) *
+							EvaluateGaussian(GetGaussianCoefficient(footprintCovarianceInv), resultMean, footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y), footprintCovarianceInv);
+
+						float det = (glm::determinant(resultCovariance * 2.f * glm::pi<float>()));
+
+						if (det > 0.f)
+							accum += resultC * glm::sqrt(det);
+					}
+				}
+			}
+
+			accum /= (mX / (float)regionSize.x) * .85f;
+			accum /= samplesPerPixel;
+
+			ndf[y * width + x] = accum;
+		}
+	}
 }
 
 void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int height, float sigmaR)
@@ -127,7 +297,6 @@ void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int 
 	float invSigmaH2 = 1.f / sigmaH2;
 	float invSigmaR2 = 1.f / sigmaR2;
 
-	glm::mat4 invCov;
 	for (int i = 0; i < mX * mY; i++)
 	{
 		float x = (i % mX);
@@ -137,223 +306,141 @@ void CurvedElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int 
 
 		GaussianElementData data;
 
-		// If texel density is bigger, we need bilinear filtering! TODO
 		glm::vec2 normal = SampleNormalMap(normalMap, Xi);
 		data.seed = glm::vec4(Xi.x, Xi.y, normal.x, normal.y);
 
-		glm::mat2 jacobian = SampleNormalMapJacobian(normalMap, Xi, h);
+		glm::mat2 jacobian = SampleNormalMapJacobian(normalMap, Xi);
 		glm::mat2 trJacobian = glm::transpose(jacobian);
 
-		data.A = glm::mat2(invSigmaH2) + trJacobian * jacobian * invSigmaR2;
+		data.A = ((trJacobian * jacobian) * invSigmaR2) + glm::mat2(invSigmaH2);
 		data.B = -trJacobian * invSigmaR2;
 		data.C = glm::mat2(invSigmaR2);
 
 		glm::mat4 invCov4D;
 
 		// Upper left
-		invCov[0][0] = data.A[0][0];
-		invCov[0][1] = data.A[0][1];
-		invCov[1][0] = data.A[1][0];
-		invCov[1][1] = data.A[1][1];
+		invCov4D[0][0] = data.A[0][0];
+		invCov4D[0][1] = data.A[0][1];
+		invCov4D[1][0] = data.A[1][0];
+		invCov4D[1][1] = data.A[1][1];
 
 		// Upper right
-		invCov[2][0] = data.B[0][0];
-		invCov[2][1] = data.B[0][1];
-		invCov[3][0] = data.B[1][0];
-		invCov[3][1] = data.B[1][1];
+		invCov4D[2][0] = data.B[0][0];
+		invCov4D[2][1] = data.B[0][1];
+		invCov4D[3][0] = data.B[1][0];
+		invCov4D[3][1] = data.B[1][1];
 
 		// Lower left
-		glm::mat2 trB = glm::transpose(data.B);
-		invCov[0][2] = trB[0][0];
-		invCov[0][3] = trB[0][1];
-		invCov[1][2] = trB[1][0];
-		invCov[1][3] = trB[1][1];
+		glm::mat2 trB = -jacobian * invSigmaR2;
+		invCov4D[0][2] = trB[0][0];
+		invCov4D[0][3] = trB[0][1];
+		invCov4D[1][2] = trB[1][0];
+		invCov4D[1][3] = trB[1][1];
 
 		// Lower right
-		invCov[2][2] = data.C[0][0];
-		invCov[2][3] = data.C[0][1];
-		invCov[3][2] = data.C[1][0];
-		invCov[3][3] = data.C[1][1];
+		invCov4D[2][2] = data.C[0][0];
+		invCov4D[2][3] = data.C[0][1];
+		invCov4D[3][2] = data.C[1][0];
+		invCov4D[3][3] = data.C[1][1];
 
-		data.coeff = 1.f / glm::sqrt(glm::determinant(2.f * glm::pi<float>() * glm::inverse(invCov)));
+		float det = glm::determinant(glm::inverse(invCov4D) * 2.f * glm::pi<float>());
 
+		if (det <= 0.f)
+			data.coeff = 0.f;
+		else
+			data.coeff = h * h / glm::sqrt(det);
+		
 		gaussians[i] = data;
 	}
 
-	glm::vec2 regionSize = glm::vec2(32, 32);
-	glm::vec2 from = glm::vec2(222, 222);
+	int threadCount = 8;
+	std::vector<std::thread> threads;
+	int bucketHeight = height / threadCount;
 
 	float * ndf = new float[width * height];
-	float cumulativeImage = 0.f;
 
-	float footprintRadius = regionSize.x * .5f / (float)mX;
-	float sigmaP = footprintRadius * .25f;
-	
-	glm::mat2 footprintCovarianceInv = glm::inverse(glm::mat2(sigmaP * sigmaP));
-	glm::vec2 footprintMean = (from + regionSize * .5f) * glm::vec2(1.f / mX, 1.f / mY);
+	for (int i = 0; i < threadCount; i++)
+		threads.push_back(std::thread(CurvedElementsIntegrationThread, i, bucketHeight, width, height, mX, mY, gaussians, ndf));
 
-	// For each direction, S
-	for (int x = 0; x < width; x++)
+	for (int i = 0; i < threadCount; i++)
+		threads[i].join();
+
+	for (int y = 0; y < height; y++)
 	{
-		for (int y = 0; y < height; y++)
-		{
-			float accum = 0.f;
-			float s = x / (float)width;
-			float t = y / (float)height;
-					/*	
-			glm::vec2 imageS = glm::vec2((s * 2.f) - 1.f, (t * 2.f) - 1.f);
-			if (glm::length(imageS) > 1.f)
-				continue;
-*/
-			// For each gaussian in the region...
-			for (int gX = from.x; gX < regionSize.x + from.x; gX++)
-			{
-				for (int gY = from.y; gY < regionSize.y + from.y; gY++)
-				{
-					GaussianElementData data = gaussians[gY * mX + gX];
-					glm::vec4 gaussianSeed = data.seed;
-
-					// Direction, S - N(Xi)
-					glm::vec2 S((s * 2.f) - 1.f, (t * 2.f) - 1.f);
-					S = S - glm::vec2(gaussianSeed.z, gaussianSeed.w);
-
-					// We reduce the 4D gaussian into 2D by fixing S, see appendix
-					glm::mat2 invCov = data.A;
-					glm::vec2 u0 = -((glm::inverse(data.A)) * data.B) * S;
-					float inner = glm::dot(S, data.C * S) - glm::dot(u0, data.A * u0);
-					float c = data.coeff * glm::exp(-0.5f * inner);
-
-					// Calculate the resulting gaussian by multiplying Gp * Gi...
-					// TODO: Get the actual footprint based on surface
-					glm::mat2 resultInvCovariance = invCov + footprintCovarianceInv;
-					glm::mat2 resultCovariance = glm::inverse(resultInvCovariance);
-					glm::vec2 resultMean = resultCovariance * (invCov * u0 + footprintCovarianceInv * (footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y)));
-
-					float resultC = EvaluateGaussian(c, resultMean, u0, invCov) *
-						EvaluateGaussian(GetGaussianCoefficient(footprintCovarianceInv), resultMean, footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y), footprintCovarianceInv);
-
-					float integral = resultC * 2.f * glm::pi<float>() * glm::sqrt(glm::determinant(resultCovariance));
-
-					accum += integral;
-				}
-			}
-/*
-			glm::vec2 X = glm::vec2(s, t);
-			accum = EvaluateGaussian(1.f, X, footprintMean, footprintCovarianceInv);
-*/
-			cumulativeImage = glm::max(cumulativeImage, accum);			
-			ndf[y * width + x] = accum;
-		}
-	}
-
-
-	for (int x = 0; x < width; x++)
-	{
-		for (int y = 0; y < height; y++)
+		for (int x = 0; x < width; x++)
 		{
 			float n = ndf[y * width + x];
-			int c = glm::clamp(n / cumulativeImage, 0.f, 1.f) * 255;
+			glm::uint8 c = glm::clamp(n * 255.f, 0.f, 255.f);
 			image.setPixel(x, y, sf::Color(c, c, c, 255));
 		}
 	}
+
+	//pcg32 generator;
+	//generator.seed(14041956);
+
+	//// For each direction, S
+	//for (int x = 0; x < width; x++)
+	//{
+	//	for (int y = 0; y < height; y++)
+	//	{
+	//		float accum = 0.f;
+
+	//		for (int sample = 0; sample < samplesPerPixel; sample++)
+	//		{
+	//			float s = (x + generator.nextFloat()) / (float)width;
+	//			float t = (y + generator.nextFloat()) / (float)height;
+
+	//			glm::vec2 imageS = glm::vec2((s * 2.f) - 1.f, (t * 2.f) - 1.f);
+	//			if (glm::length(imageS) > .975f)
+	//			{
+	//				image.setPixel(x, y, sf::Color(0, 0, 0, 255));
+	//				continue;
+	//			}
+
+	//			// For each gaussian in the region...
+	//			for (int gX = from.x; gX < regionSize.x + from.x; gX++)
+	//			{
+	//				for (int gY = from.y; gY < regionSize.y + from.y; gY++)
+	//				{
+	//					GaussianElementData data = gaussians[gY * mX + gX];
+	//					glm::vec4 gaussianSeed = data.seed;
+
+	//					// Direction, S - N(Xi)
+	//					glm::vec2 S((s * 2.f) - 1.f, (t * 2.f) - 1.f);
+	//					S = S - glm::vec2(gaussianSeed.z, gaussianSeed.w);
+
+	//					// We reduce the 4D gaussian into 2D by fixing S, see appendix
+	//					glm::mat2 invCov = data.A;
+	//					glm::vec2 u0 = -((glm::inverse(data.A)) * data.B) * S;
+	//					float inner = glm::dot(S, data.C * S) - glm::dot(u0, data.A * u0);
+	//					float c = data.coeff * glm::exp(-0.5f * inner);
+
+	//					// Calculate the resulting gaussian by multiplying Gp * Gi
+	//					glm::mat2 resultInvCovariance = invCov + footprintCovarianceInv;
+	//					glm::mat2 resultCovariance = glm::inverse(resultInvCovariance);
+	//					glm::vec2 resultMean = resultCovariance * (invCov * u0 + footprintCovarianceInv * (footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y)));
+
+	//					float resultC = EvaluateGaussian(c, resultMean, u0, invCov) *
+	//						EvaluateGaussian(GetGaussianCoefficient(footprintCovarianceInv), resultMean, footprintMean - glm::vec2(gaussianSeed.x, gaussianSeed.y), footprintCovarianceInv);
+
+	//					float det = glm::determinant(resultCovariance * 2.f * glm::pi<float>());
+
+	//					if (det > 0.f)
+	//						accum += resultC * glm::sqrt(det);
+	//				}
+	//			}
+	//		}
+
+	//		accum /= (mX / (float)regionSize.x) * .85f;
+	//		accum /= samplesPerPixel;
+
+	//		int c = glm::clamp(accum * 255.f, 0.f, 255.f);
+	//		image.setPixel(x, y, sf::Color(c, c, c, 255));
+	//	}
+	//}
 
 	delete[] ndf;
 	delete[] gaussians;
-}
-
-void FlatElements4DNDF(sf::Image& image, sf::Image& normalMap, int width, int height, float sigmaR)
-{
-	image.create(width, height, sf::Color::Black);
-
-	// Amount of gaussians
-	int mX = width; // Texel density
-	int mY = height; // Texel density
-	glm::vec4 * gaussianSeeds = new glm::vec4[mX * mY];
-	glm::mat4 * invCovarianceMatrices = new glm::mat4[mX * mY];
-
-	float h = 1.f / mX; // Texel density
-	float sigmaH = h / glm::sqrt(8.f * glm::log(2.f));
-
-	float sigmaH2 = sigmaH * sigmaH;
-	float sigmaR2 = sigmaR * sigmaR;
-	
-	glm::mat4 invCov;
-	for (int i = 0; i < mX * mY; i++)
-	{
-		float x = (i % mX);
-		float y = (i / mX);
-
-		glm::vec2 Xi(x / (float)mX, y / (float)mY);
-
-		// If texel density is bigger, we need bilinear filtering!
-		glm::vec2 normal = SampleNormalMap(normalMap, Xi);
-		gaussianSeeds[i] = glm::vec4(Xi.x + h * .5f, Xi.y + h * .5f, normal.x, normal.y);
-		
-		//gaussianSeeds[i] = glm::vec4(x, y, derivative);
-
-		//invCov[0][0] = (1.f / sigmaH2) + (derivative * derivative / sigmaR2);
-		//invCov[1][0] = (-derivative / sigmaR2);
-		//invCov[1][1] = (1.f / sigmaR2);
-		//invCov[0][1] = (-derivative / sigmaR2);
-		//invCovarianceMatrices[i] = invCov;
-	}
-
-	sigmaH2 *= 2.f;
-	sigmaR2 *= 2.f;
-
-	glm::vec2 region = glm::vec2(45, 45);
-	glm::vec2 scalingFactor = glm::vec2((float)mX / region.x, (float)mY / region.y);
-
-	for (int x = 0; x < width; x++)
-	{
-		for (int y = 0; y < height; y++)
-		{
-			float accum = 0.f;
-			float fX = x / (float)width;
-			float fY = y / (float)height;
-
-			glm::vec2 Xi = glm::vec2(fX, fY) / scalingFactor;
-
-			for (int jX = 0; jX < 30; jX++)
-			{
-				for (int jY = 0; jY < 30; jY++)
-				{
-					float s = (jX / 15.f);// *2.f - 1.f;
-					float t = (jY / 15.f);// *2.f - 1.f;
-					glm::vec2 S(s, t);
-
-					for (int gX = 0; gX < region.x; gX++)
-					{
-						for (int gY = 0; gY < region.y; gY++)
-						{
-							glm::vec4 gaussianSeed = gaussianSeeds[gY * mX + gX]; // Equivalent to (ui, n(ui))
-
-							glm::vec2 gaussianCenter = glm::vec2(gaussianSeed.x, gaussianSeed.y);
-							glm::vec2 gaussianNormal(gaussianSeed.z, gaussianSeed.w);
-
-							float positionDistance = glm::pow(glm::distance(Xi, gaussianCenter), 2.f);
-							float normalDistance = glm::pow(glm::distance(S, gaussianNormal), 2.f);
-
-							float Ci = 1.f;
-
-							// Explicit approach
-							float positionBandGi = positionDistance / sigmaH2;
-							float normalBandGi = normalDistance / sigmaR2;
-							float Gi = Ci * glm::exp(-positionBandGi) * glm::exp(-normalBandGi);
-
-							accum += Gi;
-						}
-					}
-				}
-			}
-
-			int c = glm::clamp(accum, 0.f, 1.f) * 255;
-			image.setPixel(x, y, sf::Color(c, c, c, 255));
-		}
-	}
-
-	delete[] gaussianSeeds;
-	delete[] invCovarianceMatrices;
 }
 
 void CurvedElementsFlatlandNormalImage(sf::Image& image, int width, int height, float sigmaR)
@@ -558,9 +645,8 @@ void GenerateNDF(sf::Image& image, NaiveEstimator& estimator, int width, int hei
 
 sf::Image TestFlatland()
 {
-	int width = 128;
-	int height = 128;
-
+	int width = 256;
+	int height = 256;
 
 	// Intrinsic roughness
 	float sigmaR = .005f;
@@ -578,11 +664,10 @@ sf::Image TestFlatland()
 	return image;
 }
 
-
 sf::Image Test4D(std::string normalMapFilename)
 {
-	int width = 256;
-	int height = 256;
+	int width = 512;
+	int height = 512;
 
 	// Intrinsic roughness
 	float sigmaR = .005f;
@@ -593,7 +678,10 @@ sf::Image Test4D(std::string normalMapFilename)
 	if (normalMapImage.loadFromFile(normalMapFilename))
 	{
 		CurvedElements4DNDF(image, normalMapImage, width, height, sigmaR);
-		image.saveToFile("output/4D_flat_elements.png");
+		image.saveToFile("output/4D_curved.png");
+
+		//RenderJacobian(image, normalMapImage, width, height);
+		//image.saveToFile("output/jacobian.png");
 	}
 
 	return image;
@@ -606,7 +694,7 @@ int main()
 	sf::RenderWindow window(sf::VideoMode(width, height), "NDF Estimator");
 	sf::RectangleShape background(sf::Vector2f(width, height));
 
-	std::string filename("cutlery.png");
+	std::string filename("scratches.png");
 
 	NaiveEstimator estimator("images/" + filename);
 
